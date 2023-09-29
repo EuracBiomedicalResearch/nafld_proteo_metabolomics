@@ -1,0 +1,73 @@
+# Compile the NAFLD untargeted metabolomics data set
+
+```{r, echo = FALSE}
+library(BiocStyle)
+```
+
+This document describes how the untargeted data set for the NAFLD project is
+compiled and how it can be used. We will store the full MS data into a SQLite
+database which can be accessed and used with the `r Biocpkg("MsBackendSql")`
+package.
+
+We first load the information on the raw data files generated from each study
+participant.
+
+```{r}
+library(readxl)
+library(Spectra)
+library(MsBackendSql)
+
+pd <- as.data.frame(read_xlsx("data/nafld_untargeted_metabolomics.xlsx"))
+```
+
+## Store MS data into a SQL database
+
+Next we store the MS data into a RSQLite database.
+
+```{r}
+fls <- file.path("data", pd$mzML_file)
+
+library(RSQLite)
+con <- dbConnect(SQLite(), dbname = "data/NAFLD_untargeted.sqlite")
+
+system.time(
+    createMsBackendSqlDatabase(con, fls, MsBackendMzR(), chunksize = 10)
+)
+dbDisconnect(con)
+```
+
+
+## Create a `MsExperiment` representing the data
+
+
+```{r}
+library(MsExperiment)
+library(RSQLite)
+
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+#' Subset to positive polarity
+pd <- pd[pd$polarity == "POS", ]
+
+#' Subset the Spectra to the respective files
+sps <- sps[basename(sps$dataOrigin) %in% pd$file]
+sps$file <- basename(sps$dataOrigin)
+
+#' Create MsExperiment and fill with data
+nafld <- MsExperiment()
+sampleData(nafld) <- DataFrame(pd)
+spectra(nafld) <- sps
+
+#' Link spectra to samples
+nafld <- linkSampleData(nafld, with = "sampleData.file = spectra.file")
+```
+
+
+
+# Session information
+
+```{r}
+sessionInfo()
+```
