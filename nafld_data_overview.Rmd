@@ -1,0 +1,352 @@
+---
+title: "NAFLD"
+author: "Johannes Rainer"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+---
+
+```{r, echo = FALSE}
+library(knitr)
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 10, fig.height = 7)
+```
+
+# NAFLD data
+
+Demographics of the NAFLD cohort and evaluation of available trait data.
+
+```{r}
+library(chrisData)
+library(nafldData)
+library(vioplot)
+
+n_anns <- nafldTraitAnnotations()
+
+#' personal data
+n_perso <- nafldData("personal")
+n_data <- n_perso[, c("AID", "aid_chris", "na_ager", "na_sex", "na_fwup")]
+#' na_ager: rounded age
+#' na_fwup: follow-up duration CHRIS->NAFLD
+
+tmp <- nafldData("recruitment")
+rownames(tmp) <- tmp$AID
+n_data$case <- tmp[n_data$AID, "na_case"]
+
+```
+
+The data set is nicely balanced by sex:
+
+```{r}
+table(n_data$na_sex)
+```
+
+The age distribution of participants (split by sex) is shown below.
+
+```{r, fig.cap = "Age distribution."}
+vioplot(split(n_data$na_ager, n_data$na_sex), ylab = "age")
+grid()
+```
+
+The distribution of time between participants' CHRIS baseline and NAFLD
+participation is shown below.
+
+```{r, fig.cap = "Distribution of the time span between CHRIS baseline and NAFLD."}
+plot(density(n_data$na_fwup))
+grid()
+```
+
+The time span between the two studies is thus between 2 to 5 years. We next
+evaluate BMI and fat composition for the study participants, first split by
+gender and then by case/control definition.
+
+```{r}
+#' BMI, fat etc.
+n_anthro <- nafldData("anthro")
+rownames(n_anthro) <- n_anthro$AID
+
+n_data$BMI <- n_anthro[n_data$AID, "naan03"]
+n_data$body_fat <- n_anthro[n_data$AID, "naan04"]
+n_data$visc_fat <- n_anthro[n_data$AID, "naan05"]
+
+```
+
+```{r, fig.cap = "Distribution of BMI and body fat per sex or *case*."}
+par(mfrow = c(2, 3))
+#' split by sex
+vioplot(split(n_data$BMI, n_data$na_sex), main = "BMI", ylab = "BMI")
+grid()
+vioplot(split(n_data$body_fat, n_data$na_sex), main = "Body fat",
+        ylab = "Body fat")
+grid()
+vioplot(split(n_data$visc_fat, n_data$na_sex), main = "Visceral fat",
+        ylab = "Visceral fat")
+grid()
+#' split by case
+vioplot(split(n_data$BMI, n_data$case), main = "BMI", ylab = "BMI")
+grid()
+vioplot(split(n_data$body_fat, n_data$case), main = "Body fat",
+        ylab = "Body fat")
+grid()
+vioplot(split(n_data$visc_fat, n_data$case), main = "Visceral fat",
+        ylab = "Visceral fat")
+grid()
+
+```
+
+While the distribution of the BMI is balanced between female and male
+participants, females have on average a much higher body fat percentage, while
+males have on average a higher proportion of visceral fat. For cases and
+controls (defined for the recruitment of CHRIS participants) on average higher
+BMI, body fat and visceral fat can be observed for *cases*.
+
+Note that there seems to be no dependency between age and BMI in the present
+data set (data not shown).
+
+We next evaluate the clinical examinations performed on all participants.
+
+```{r}
+#' Clinical examinations
+tmp <- nafldData("clinical")
+rownames(tmp) <- tmp$AID
+```
+
+We will use and evaluate the following parameters defined by a clinical
+examination:
+
+- *naab11*: liver stiffness (higher values are worse). Values for participants
+  that have a *naab12* (liver stiffness IQR) > 30 should be either removed or
+  taken with care.
+- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness
+  measurements. Values below 30 are considered OK.
+- *naab13*: liver fat. Can be binarized at an absolute value of 288.
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
+  to 3. Values 2 and 3 can be considered steatotic.
+- *nascfib4*: fibrosis 4 index. Linear score calculated from standard clinical
+  parameters.
+- *nascmets*: metabolic syndrome, binary category.
+
+```{r}
+n_data$liver_stiffness <- tmp[n_data$AID, "naab11"]
+n_data$liver_stiffness_iqr <- tmp[n_data$AID, "naab12"]
+n_data$liver_fat <- tmp[n_data$AID, "naab13"]
+n_data$visual_fat <- tmp[n_data$AID, "naab14"]
+n_data$fib4 <- tmp[n_data$AID, "nascfib4"]
+n_data$metsym <- tmp[n_data$AID, "nascmets"]
+```
+
+From the `r nrow(n_data)` participants, 
+`r sum(n_data$liver_stiffness_iqr >= 30, na.rm = TRUE)`
+have a liver stiffness IQR `>= 30`.
+
+At first we evaluate the distribution of the liver stiffness score in the data
+set.
+
+```{r, fig.cap = "Distribution of liver stiffness measurements. All values considered. Problematic values are highlighted in red in the lower panel.", fig.height = 10}
+stiff_ok <- which(n_data$liver_stiffness_iqr < 30)
+par(mfrow = c(2, 2))
+vioplot(split(log2(n_data$liver_stiffness), n_data$na_sex),
+        main = "Liver stiffness", ylab = expression(log[2](Liver~stiffness)))
+grid()
+vioplot(split(log2(n_data$liver_stiffness), n_data$case),
+        main = "Liver stiffness", ylab = expression(log[2](Liver~stiffness)))
+grid()
+col <- rep("#ff0000", nrow(n_data))
+col[stiff_ok] <- "#000000"
+x <- n_data$na_ager
+y <- log2(n_data$liver_stiffness)
+plot(x, y, pch = 21, bg = paste0(col, "40"),
+     col = paste0(col, "80"), main = "Liver stiffness",
+     xlab = "age", ylab = expression(log[2](Liver~stiffness)))
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+x <- n_data$BMI
+plot(x, y, pch = 21, bg = paste0(col, "40"),
+     col = paste0(col, "80"), main = "Liver stiffness",
+     xlab = "BMI", ylab = expression(log[2](Liver~stiffness)))
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+```
+
+While there is a clear average difference for liver stiffness between male and
+female as well as case and control cases, there seems to be no general age
+dependency of the liver stiffness. Only for a subset of participants there seems
+to be a (log linear) increase with age. In contrast, a (log-linear) relationship
+between BMI and liver stiffness can be observed.
+
+We next evaluate the distribution of liver fat values in the study cohort.
+
+```{r, fig.cap = "Distribution of liver fat values in the study cohort.", fig.height = 10}
+par(mfrow = c(2, 2))
+vioplot(split(n_data$liver_fat, n_data$na_sex),
+        main = "Liver fat", ylab = "Liver fat")
+grid()
+vioplot(split(n_data$liver_fat, n_data$case),
+        main = "Liver fat", ylab = "Liver fat")
+grid()
+x <- n_data$na_ager
+y <- n_data$liver_fat
+plot(x, y, pch = 21, main = "Liver fat", xlab = "age", ylab = "Liver fat",
+     bg = "#00000040", col = "#00000080")
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+x <- n_data$BMI
+plot(x, y, pch = 21, main = "Liver fat", xlab = "BMI", ylab = "Liver fat",
+     bg = "#00000040", col = "#00000080")
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+```
+
+Similar to the liver stiffness, we see differences in average liver fat values
+between male and female study participants as well as between cases and
+controls, while there seems no age dependency. A strong relationship between BMI
+and liver fat can be observed.
+
+For completeness we also plot the visual fat categorization.
+
+```{r, fig.cap = "Overview of visual fat categories.", fig.height = 10}
+par(mfrow = c(2, 2))
+split(n_data$visual_fat, n_data$na_sex) |>
+    lapply(table) |>
+    do.call(what = cbind) |>
+    barplot()
+split(n_data$visual_fat, n_data$case) |>
+    lapply(table) |>
+    do.call(what = cbind) |>
+    barplot()
+vioplot(split(n_data$na_ager, n_data$visual_fat), main = "Visual fat",
+        ylab = "age")
+grid()
+vioplot(split(n_data$BMI, n_data$visual_fat), main = "Visual fat",
+        ylab = "BMI")
+grid()
+```
+
+A clear relationship can be seen for the visual fat evaluation with the cases as
+well as BMI.
+
+Next we evaluate the FIB4 score.
+
+```{r, fig.cap = "Distribution of FIB4 scores.", fig.height = 10}
+par(mfrow = c(2, 2))
+vioplot(split(log2(n_data$fib4), n_data$na_sex),
+        main = "FIB4", ylab = expression(log[2](FIB4)))
+grid()
+vioplot(split(log2(n_data$fib4), n_data$case),
+        main = "FIB4", ylab = expression(log[2](FIB4)))
+grid()
+x <- n_data$na_ager
+y <- log2(n_data$fib4)
+plot(x, y, pch = 21, main = "FIB4", xlab = "age",
+     ylab = expression(log[2](FIB4)),
+     bg = "#00000040", col = "#00000080")
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+x <- n_data$BMI
+plot(x, y, pch = 21, main = "FIB4", xlab = "BMI",
+     ylab = expression(log[2](FIB4)),
+     bg = "#00000040", col = "#00000080")
+grid()
+abline(lm(y ~ x), lty = 1, col = "#00000080")
+```
+
+There seems to be only a small difference in average FIB4 values between male
+and female participants or between cases and controls. A strong (positive)
+relationship is however visible between FIB4 and age. A slight negative
+relationship seems to be present between FIB4 and BMI.
+
+```{r, fig.cap = "Overview of metabolic syndrome categories.", fig.height = 10}
+par(mfrow = c(2, 2))
+split(n_data$metsym, n_data$na_sex) |>
+    lapply(table) |>
+    do.call(what = cbind) |>
+    barplot()
+split(n_data$metsym, n_data$case) |>
+    lapply(table) |>
+    do.call(what = cbind) |>
+    barplot()
+vioplot(split(n_data$na_ager, n_data$metsym), main = "Metabolic syndrome",
+        ylab = "age")
+grid()
+vioplot(split(n_data$BMI, n_data$metsym), main = "Metabolic syndrome",
+        ylab = "BMI")
+grid()
+```
+
+While no cases of metabolic syndrome seem to be balanced between male and female
+participants and seem to be independent of the participants' ages, a strong
+difference can be seen for cases and controls as well as for BMI.
+
+```{r}
+#' Drug usage. only categorical.
+```
+
+What still needs to be done:
+
+- Diabetes diagnosis (using the definition from the shared document).
+
+
+# NAFLD omics data overview
+
+Get the IDs of NAFLD participants and their respective CHRIS AID.
+
+
+```{r, message = FALSE}
+library(chrisData)
+
+gi <- chrisData("general")
+
+nafld <- gi[which(gi$x0_nafld == "Yes"), ]
+```
+
+Participation year (in CHRIS baseline) for the `r nrow(nafld)` NAFLD study
+participants.
+
+```{r}
+barplot(table(nafld$x0_examy))
+```
+
+We determine the number of participants with available CHRIS targeted
+metabolomics as well as CHRIS ScanningSWATH and Somalogic proteomics data from
+the baseline and NAFLD collections.
+
+```{r, message = FALSE}
+library(tidyfr)
+soma <- data_module(name = "chris_somalogic", version = "1.0.3.2", path = ".")
+scan <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.2",
+                    path = ".")
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2", path = ".")
+
+soma_aid <- rownames(data(soma))
+scan_aid <- rownames(data(scan))
+p180_aid <- rownames(data(p180))
+```
+
+```{r, results = "asis"}
+library(pander)
+tmp <- data.frame(baseline = c(sum(nafld$AID %in% p180_aid),
+                               sum(nafld$AID %in% scan_aid),
+                               sum(nafld$AID %in% soma_aid)),
+                  NAFLD = c(sum(nafld$aid_nafld %in% p180_aid),
+                            sum(nafld$aid_nafld %in% scan_aid),
+                            sum(nafld$aid_nafld %in% soma_aid)))
+rownames(tmp) <- c("targeted metabolomics",
+                   "ScanningSWATH proteomics",
+                   "SomaLogic proteomics")
+pandoc.table(tmp, style = "rmarkdown",
+             caption = paste0("Number of NAFLD study participants (n = ",
+                              nrow(nafld), ") with available omics data"))
+```
+
+Note: these numbers don't include any of the drop outs up to version 2 (July
+2023).
+
+
+```{r}
+do <- read.table(system.file("txt", "drop-outs.txt", package = "chrisData"),
+                 sep = "\t", header = TRUE, colClasses = "character")
+any(do$aid %in% nafld$AID)
+any(do$aid %in% nafld$aid_nafld)
+```
