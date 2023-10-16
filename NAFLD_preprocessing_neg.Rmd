@@ -1,0 +1,82 @@
+---
+title: "NAFLD preprocessing neg"
+author: "Philippine Louail"
+date: "2023-10-05"
+output: html_document
+---
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7)
+```
+
+
+# Data import 
+
+Create a `MsExperiment` representing the data
+```{r}
+library(MsExperiment)
+library(RSQLite)
+
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+#' Subset to positive polarity
+pd <- pd[pd$polarity == "NEG", ]
+
+#' Subset the Spectra to the respective files
+sps <- sps[basename(sps$dataOrigin) %in% pd$file]
+sps$file <- basename(sps$dataOrigin)
+
+#' Create MsExperiment and fill with data
+nafld_neg <- MsExperiment()
+sampleData(nafld_neg) <- DataFrame(pd)
+spectra(nafld_neg) <- sps
+
+#' Link spectra to samples
+nafld_neg <- linkSampleData(nafld_neg, with = "sampleData.file = spectra.file")
+```
+
+
+```{r include=FALSE}
+#' Set up parallel processing using 2 cores
+if (.Platform$OS.type == "unix") {
+    register(bpstart(MulticoreParam(2)))
+} else {
+    register(bpstart(SnowParam(2)))
+}
+```
+
+# Data organisation
+
+The experimental data is now a `MsExperiment` object:
+```{r}
+nafld_neg
+```
+
+There is `r length(sampleData(nafld_pos))` samples in this dataset.
+
+```{r phenodata, echo=FALSE}
+sampleData(nafld_neg) |> 
+  as.data.frame() |>
+    pandoc.table(style = "rmarkdown", caption = "Samples from the data set.")head()
+```
+
+
+
+```{r define-colors, include=FALSE}
+#' Define colors for the groups.
+col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4)]
+names(col_phenotype) <- c("CTR", "CVD", "QC")
+
+col_sample <- col_phenotype[sampleData(data)$phenotype] 
+```
+# Session information
+
+```{r}
+sessionInfo()
+```

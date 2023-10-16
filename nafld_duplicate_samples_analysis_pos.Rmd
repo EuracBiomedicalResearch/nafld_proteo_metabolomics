@@ -1,0 +1,425 @@
+---
+title: "duplicated_nafld"
+author:
+  - name: "Philippine Louail"
+affiliation: "Eurac Research, Bolzano, Italy"
+output: rmdformats::html_clean   
+date: "2023-10-16"
+---
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7)
+```
+
+# Packages
+
+```{r warning=FALSE, include=FALSE}
+library(MsExperiment)
+library(RSQLite)
+library(xcms)
+library(Spectra)
+library(RColorBrewer)
+library(pander)
+library(readxl)
+library(MetaboCoreUtils)
+library(pheatmap)
+library(MsBackendSql)
+```
+
+
+
+```{r}
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+pd <- as.data.frame(read_xlsx("data/nafld_untargeted_metabolomics.xlsx"))
+
+#' Subset to positive polarity
+pd <- pd[pd$polarity == "POS", ]
+batches <- c("20200204", "20201026", "20200901", "20210922")
+pd <- pd[pd$batch == batches,] ## specifically for analysis of the duplicated samples 
+
+
+#' Subset the Spectra to the respective files
+sps <- sps[basename(sps$dataOrigin) %in% pd$file]
+sps$file <- basename(sps$dataOrigin)
+
+#' Create MsExperiment and fill with data
+nafld <- MsExperiment()
+sampleData(nafld) <- DataFrame(pd)
+spectra(nafld) <- sps
+
+#' Link spectra to samples
+nafld <- linkSampleData(nafld, with = "sampleData.file = spectra.file")
+```
+
+```{r define-colors, include=FALSE}
+#' Define colors for the groups.
+col_phenotype <- brewer.pal(4, "Set1")[c(2, 1, 4, 3)]
+names(col_phenotype) <- c("study", "POOL", "QC", "BLANK")
+
+col_sample <- col_phenotype[sampleData(nafld)$sample_type] 
+```
+
+```{r}
+#' Set up parallel processing using 3 cores
+if (.Platform$OS.type == "unix") {
+    register(bpstart(MulticoreParam(3)))
+} else {
+    register(bpstart(SnowParam(3)))
+}
+```
+
+
+Get some data overview to be sure everything is fine (it was not before for example)
+```{r some healthy stuff}
+#' check number of spectra per file
+fromFile(nafld) |> 
+    table()
+
+#' List number of spectra per MS level
+spectra(nafld) |>
+    msLevel() |>
+    table()
+
+#' Get the distribution of peak counts per file
+spectra(nafld) |>
+    lengths() |>
+    split(fromFile(nafld)) |>
+    lapply(quantile)
+```
+
+
+
+```{r Plot bpc before filtering, echo=FALSE}
+#' First extract and plot bpc for full data
+bpc <- chromatogram(nafld, aggregationFun = "max")
+
+#' Plot
+png(paste("bpc duplicated samples.png"))
+plot(bpc, col = paste0(col_phenotype[bpc$sample_type]), main = "BPC")
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+dev.off()
+
+#' Filter for ret time 
+nafld <- filterRt(nafld, c(0, 350))
+
+#' Plot again
+bpc <- chromatogram(nafld, aggregationFun = "max")
+png(paste("bpc duplicated samples_after_filtering.png"))
+plot(bpc, col = paste0(col_phenotype[bpc$sample_type]), main = "BPC after filtering")
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+dev.off()
+
+```
+## Internal standards
+
+change this so that chromatogram part outside of loop
+```{r EIC extract for internal standard }
+#' get the list 
+intern_standard <- read.delim("C:/Users/plouail/Documents/GitHub/lcms-standards/data/internal_standards.txt") 
+intern_standard <- intern_standard[-4, ] ## remove succinic acid because no POS
+
+#'generate calcualte formula
+intern_standard[, "mz"] <- mass2mz(intern_standard$formula, adduct = "[M+H]+")[, 1]
+intern_standard[3, "mz"] <- mass2mz(intern_standard[3,"formula"], adduct = "[M+Na]+")[, 1]
+
+
+##' Extract the EICs no RT 
+#' Expand the m/z range by 0.01 on both sides
+intern_standard$mzmin <- intern_standard$mz - 0.005
+intern_standard$mzmax <- intern_standard$mz + 0.005
+intern_standard$rtmin <- 0
+intern_standard$rtmax <- 350
+
+eics <- chromatogram(nafld, mz = as.matrix(intern_standard[, 14:15]), rt = as.matrix(intern_standard[, 16:17])) 
+
+for (i in seq_len(nrow(intern_standard))) {
+    x <- intern_standard[i, c(2,3,4,6)]
+    png(paste("png/internal_standard/chromatogram/chromatogram", x$abbreviation, ".png"))
+    plot(eics[i], main = paste("chromatogram_all_sample_for_", x$abbreviation), 
+         col = paste0(col_phenotype[eics$sample_type], 80))
+    grid()
+    legend("topright", col = col_phenotype,
+           legend = names(col_phenotype), lty = 1)
+    abline(v = x$RT, col = "red", )
+    dev.off()
+}
+
+##'  extract EIC with RT
+
+intern_standard[,"rtmin"] <- intern_standard[, "RT"] - 10
+intern_standard[,"rtmax"] <- intern_standard[, "RT"] + 10
+eics <- chromatogram(nafld, mz = as.matrix(intern_standard[, 14:15]), rt = as.matrix(intern_standard[, 16:17]))
+for (i in seq_len(nrow(intern_standard))) {
+    x <- intern_standard[i, c(2,3,4,6)]
+    #'plot it add expected retention time
+    png(paste("png/internal_standard/EIC/EIC", x$abbreviation, ".png"))
+    plot(eics[i], main = paste("EIC_all_sample_for_", x$abbreviation), 
+         col = paste0(col_phenotype[eics$sample_type], 80))
+    grid()
+    legend("topright", col = col_phenotype,
+           legend = names(col_phenotype), lty = 1)
+    abline(v = x$RT, col = "red", )
+    dev.off()
+}
+
+#' what does it mean exactly ? what about the multiple peaks ones ? do on ALL sample ?
+```
+
+## Standards
+
+```{r full standard}
+#' get the list 
+standard <- read.delim("C:/Users/plouail/Documents/GitHub/lcms-standards/data/standards_dilution.txt")
+
+#' select for pos standard
+x <- standard[!is.na(standard$POS),]
+#' calculate mass 
+x$mass <- calculateMass(x$formula)
+
+#' Calculate charge 
+for (i in seq_len(nrow(x))){
+    xi <- x[i,]
+    x[i, "mz"] <- mass2mz(xi$mass, adduct = xi$POS)[, 1]
+}
+
+##' Extract the EICs no RT 
+
+#' Expand the m/z range by 0.01 on both sides
+x$mzmin <- x$mz - 0.005
+x$mzmax <- x$mz + 0.005
+x$rtmin <- 0
+x$rtmax <- 350
+
+#' extract chromatogram
+eics <- chromatogram(nafld, mz = as.matrix(x[, 18:19]), 
+                     rt = as.matrix(x[, 20:21]))
+
+#' loop through standard list and extract chromatogram
+for (i in seq_len(nrow(x))) {
+    #'plot it add expected retention time
+    png(paste("png/standard/chromatogram/chromatogram", x$abbreviation, ".png"))
+    plot(eics[i], main = paste("chromatogram_all_sample_for_", x$abbreviation), 
+         col = paste0(col_phenotype[eics$sample_type], 80))
+    grid()
+    legend("topright", col = col_phenotype,
+           legend = names(col_phenotype), lty = 1)
+    abline(v = x$RT, col = "red", )
+    dev.off()
+}
+```
+
+We therefore have an data set of `r length(nafld)` samples for a total of `r length(spectra(nafld))` spectra. 
+
+
+The retention time range for the entire data set is: `r range(rtime(spectra(nafld)))`
+
+```{r heatmap}
+#' Heatmap from total ion chromatogram 
+tic <- chromatogram(nafld, aggregationFun = "sum") |> 
+  bin(binSize = 2)
+
+ticmap <- do.call(cbind, lapply(tic, intensity)) |>
+  cor() |> 
+  pheatmap()
+```
+
+```{r bps}
+#' plot some  only the POOL 
+pool_sample <- which(sampleData(nafld)$sample_type == "POOL")
+pool_sample <- nafld[pool_sample]
+
+bps <- spectra(pool_sample) |>
+  combineSpectra(f = fromFile(pool_sample), intensityFun = max, ppm = 5)  
+
+par(mfrow = c(2,1), mar = c(4, 4.5, 1, 0.5)) # again not sure what to look for here 
+plotSpectraOverlay(bps)
+plotSpectra(bps)[5:8]
+plotSpectra(bps)[9:10]
+```
+
+# Preprocessing
+```{r}
+
+```
+
+## Chromatographic peak detection
+
+finding cwp parameter 
+
+- peakwidth: observing previous EIC, expecting between 2 to 20s 
+_ ppm: discuss with johannes bc hard to find good parameter.. 
+```{r ppm parameter }
+
+#' choose a nice compound here 
+cystine_mz <- calculateMass("C6H12N2O4S2") |> 
+  mass2mz("[M+H]+")
+  
+cystine_mz <- cystine_mz[1, 1]
+
+#' Restrict the data to signal from Cystine
+cst <- nafld[1L] |>
+  spectra() |>
+  filterRt(rt = c(200, 220)) |>
+  filterMzRange(mz = cystine_mz + c(-0.01, 0.01))
+
+lengths(cst)
+
+#' Calculate the difference in m/z values between scans
+mz_diff <- cst |>
+    mz() |>
+    unlist() |>
+    diff() |>
+    abs()
+
+#' Express it in ppm
+range(mz_diff * 1e6 / mean(unlist(mz(cst))))
+```
+
+```{r}
+#' extract test ion 
+#' for cystine 
+eic_cystine <- chromatogram(nafld, rt = c(200, 235),
+                           mz = cystine_mz + c(-0.05, 0.05))
+#' histidine
+
+his_mz <- calculateMass("C6H9N3O2") |> 
+  mass2mz("[M+H]+")
+  
+his_mz <- his_mz[1, 1]
+
+eic_his <- chromatogram(nafld, rt = c(170, 210),
+                           mz = his_mz + c(-0.05, 0.05))
+```
+
+
+```{r warning=FALSE}
+param <- CentWaveParam(peakwidth = c(2, 20), ppm = 40, integrate = 2)
+
+#' test for some compounds:
+#' cystine
+cystine_test <- findChromPeaks(eic_cystine, param = param)
+head(chromPeaks(cystine_test))
+
+#' histidine
+his_test <- findChromPeaks(eic_his, param = param)
+head(chromPeaks(his_test))
+```
+
+```{r echo=FALSE}
+#' Plot test chromatogram
+par(mfrow = c(1, 2))
+plot(cystine_test, main = "Cystine", col = paste0(col_phenotype[eic_cystine$sample_type], 80))
+grid()
+
+plot(his_test, main = "Histidine", col = paste0(col_phenotype[eic_his$sample_type], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+```
+
+In my opinion looks pretty good, should apply to all data: 
+
+```{r}
+nafld <- findChromPeaks(nafld, param = param)
+
+#' test for ions of interest 
+eic_cystine <- chromatogram(nafld, rt = c(200, 220),
+                           mz = cystine_mz + c(-0.05, 0.05),
+                           aggregationFun = "max")
+
+eic_his <- chromatogram(nafld, rt = c(170, 205),
+                           mz = his_mz + c(-0.05, 0.05),
+                           aggregationFun = "max")
+
+par(mfrow = c(1, 2))
+plot(eic_cystine, main = "Cystine", col = paste0(col_phenotype[eic_cystine$sample_type], 80))
+grid()
+plot(eic_his, main = "Histidine", col = paste0(col_phenotype[eic_his$sample_type], 80))
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+
+```
+
+Look at the nb of peak per files
+```{r}
+#' Count peaks per file
+chromPeaks(nafld)[, "sample"] |>
+    table()
+
+#' sample 8 has lower amount than rest 
+```
+
+### Refine chromatographic peaks 
+
+
+test our dataset:
+that doesnt really work tbh
+```{r}
+#' Select 4 random peaks
+mz_rt <- data.frame(row.names=c("Area 1", "Area 2", "Area 3", "Area 4"), 
+                    rtmin = c(137.291, 161.5420, 161.5420, 162.3770),
+                    rtmax = c(148.965, 167.4010, 166.8430, 167.1200), 
+                    mzmin = c(251.1842, 939.8238, 992.8133, 910.8906),
+                    mzmax = c(251.1881, 939.9147, 992.9208, 910.9350)) |> 
+  as.matrix()
+
+
+#' Expand the rt range by 10 seconds on both sides
+mz_rt[, "rtmin"] <- mz_rt[, "rtmin"] - 5
+mz_rt[, "rtmax"] <- mz_rt[, "rtmax"] + 5
+#' Expand the m/z range by 0.005 on both sides
+mz_rt[, "mzmin"] <- mz_rt[, "mzmin"] - 0.001
+mz_rt[, "mzmax"] <- mz_rt[, "mzmax"] + 0.001
+
+
+#' Extract the EICs
+eics <- chromatogram(nafld, mz = mz_rt[, 3:4], rt = mz_rt[, 1:2])
+#' Plot the EICs
+plot(eics)
+```
+
+
+Choose parameter: 
+
+- expandRt: switch it to 5 ? or keep 2.5 
+- 
+- 
+
+let's see what happens
+```{r test merging}
+#' set up the parameter 
+param <- MergeNeighboringPeaksParam(expandRt = 5, expandMz = 0.001,
+                                   minProp = 3/4) 
+
+#' Perform the peak refinement on the EICs
+eics <- refineChromPeaks(eics, param = param)
+plot(eics)
+```
+- DO we need to show for this dataset, can barely see anything
+
+
+```{r}
+#' apply to all dataset 
+nafld <- refineChromPeaks(nafld, param = param)
+```
+"Reduced from 715317 to 643063 chromatographic peaks."
+
+
+
+# Session information
+
+```{r}
+sessionInfo()
+```
