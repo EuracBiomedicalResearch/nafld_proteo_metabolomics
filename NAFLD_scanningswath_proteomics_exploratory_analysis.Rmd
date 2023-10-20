@@ -6,7 +6,7 @@ output:
   BiocStyle::html_document:
     toc_float: true
     code_folding: hide
-bibliography: references.bib
+#bibliography: references.bib
 ---
 
 **Modified**: `r file.info("NAFLD_scanningswath_proteomics_exploratory_analysis.Rmd")$mtime`<br />
@@ -200,7 +200,8 @@ Table_1 <- data.frame(
     Genes = protSS_ann[proteins,"Genes"],
     Description = protSS_ann[proteins,"long_description"],
     Mean = colMeans(protSS_data[,proteins], na.rm = TRUE),
-    SD = sapply(protSS_data[,proteins], sd, na.rm = TRUE))
+    SD = sapply(protSS_data[,proteins], sd, na.rm = TRUE),
+    qc_cv = protSS_ann[proteins, "cv_qc_chris"])
     #CV_QC = rowData(chris_plasma_proteins)$cv_qc)
 datatable(Table_1) |>
 formatRound(columns = seq(3, ncol(Table_1)), digits = 3)
