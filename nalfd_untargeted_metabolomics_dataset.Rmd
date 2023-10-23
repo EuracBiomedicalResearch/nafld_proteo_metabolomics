@@ -17,7 +17,7 @@ library(readxl)
 library(Spectra)
 library(MsBackendSql)
 
-pd <- as.data.frame(read_xlsx("data/nafld_untargeted_metabolomics.xlsx"))
+pd <- as.data.frame(read_xlsx("data/nafld_hilic_files.xlsx"))
 ```
 
 ## Store MS data into a SQL database
@@ -25,7 +25,7 @@ pd <- as.data.frame(read_xlsx("data/nafld_untargeted_metabolomics.xlsx"))
 Next we store the MS data into a RSQLite database.
 
 ```{r}
-fls <- file.path("data", pd$mzML_file)
+fls <- file.path("/data/massspec/mzML", pd$path, pd$file_name)
 
 library(RSQLite)
 con <- dbConnect(SQLite(), dbname = "data/NAFLD_untargeted.sqlite")
