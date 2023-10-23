@@ -1,0 +1,516 @@
+---
+title: "Exploratory data analysis of the NAFLD metabolomics data set"
+author: "Nikola Dordevic, Essi Hantikainen, Johannes Rainer"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+#bibliography: references.bib
+---
+
+**Modified**: `r file.info("NAFLD_metabolomics_exploratory_analysis.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r biocstyle, echo = FALSE, results = "asis", message = FALSE}
+#' rmarkdown format settings
+library(BiocStyle)
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 8, fig.height = 7)
+BiocStyle::markdown()
+```
+
+
+
+```{r settings, echo = FALSE}
+#' General settings
+filename <- "NAFLD_metabolomics_exploratory_analysis"
+#' Path to save images to
+IMAGE_PATH <- paste0("images/", filename, "/")
+if (file.exists(IMAGE_PATH))
+    unlink(IMAGE_PATH, recursive = TRUE)
+dir.create(IMAGE_PATH, recursive = TRUE)
+#' Path to store RData files
+RDATA_PATH <- paste0("data/RData/", filename, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+```
+
+
+# Introduction
+
+In this document we perform an unsupervised *exploratory* data analysis of the
+metabolomics data set of the NAFLD study to evaluate and identify any relations 
+between metabolites and/or participants.
+
+# Data import
+
+Below we load all required packages for the analysis and retrieve the data.
+
+```{r libraries}
+library(CompMetaboTools)
+library(tidyfr)
+library(chrisUtils)
+library(chrisData)
+library(nafldData)
+library(RColorBrewer)
+library(pander)
+library(pheatmap)
+library(DT)
+library(ggfortify)
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(rrcov)
+library(WGCNA)
+library(flashClust)
+options(rgl.useNULL = TRUE)
+library(rgl)
+library(writexl)
+```
+
+We next load the data the TDFF data module. 
+
+```{r, message = FALSE}
+##
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.1", path = ".")
+met_data <- data(p180)
+met_ann <- labels(p180)
+stopifnot(all(colnames(met_data) == rownames(met_ann)))
+colnames(met_data) <- met_ann$description
+rownames(met_ann) <- met_ann$description
+## define the columns with peptide concentrations
+metabolites <- rownames(met_ann)[met_ann$type != "categorical"] 
+met_data <- met_data[, metabolites]
+```
+
+Perform log2 transformation!
+
+```{r log2-transformation, message = FALSE}
+##
+met_data <- log2(met_data)
+```
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study.
+
+```{r remove-POOLs-NAFLDs, message = FALSE, warning = FALSE}
+met_data <- met_data[grep("^008", rownames(met_data)), ]
+```
+
+# General data overview
+
+In this dataset `r ncol(met_data)` metabolites measured from `r nrow(met_data)`
+samples collected from the NAFLD study are evaluated. Note that all metabolites 
+are log2 transformed.
+
+Distributions of all 175 metabolites are visualized in histograms.
+
+```{r Distributions}
+PlotHist <- function(AnlName) {
+    Anl <- met_data[, AnlName]
+    plot(density(Anl, na.rm = T), col = 2, main = AnlName,
+                                               xlab = "Conc.")
+    }
+anlts <- colnames(met_data)
+splits <- rep(seq_len(ceiling(length(anlts) / 12)), each = 12)
+splits <- splits[1:length(anlts)]
+anlts <- split(anlts, splits)
+for (i in seq_along(anlts)) {
+    anlts_i <- anlts[[i]]
+    par(mfrow = c(3, 4))
+    for (anlt in anlts_i)
+        PlotHist(anlt)
+}
+```
+
+
+Demographics of the NAFLD cohort and evaluation of available trait data.
+
+```{r}
+n_anns <- nafldTraitAnnotations()
+
+#' personal data
+n_perso <- nafldData("personal")
+rownames(n_perso) <- n_perso$AID
+#met_data <- n_perso[rownames(met_data), c("AID", "aid_chris", "na_ager", 
+#                                          "na_sex", "na_fwup")]
+met_data$AID <- n_perso[rownames(met_data), "AID"]
+met_data$AID_CHRIS <- n_perso[rownames(met_data), "aid_chris"]
+met_data$Age <- n_perso[rownames(met_data), "na_ager"]
+met_data$Sex <- n_perso[rownames(met_data), "na_sex"]
+met_data$fwup <- n_perso[rownames(met_data), "na_fwup"]
+
+
+#' na_ager: rounded age
+#' na_fwup: follow-up duration CHRIS->NAFLD
+
+tmp <- nafldData("recruitment")
+rownames(tmp) <- tmp$AID
+met_data$case <- tmp[rownames(met_data), "na_case"]
+```
+
+The time span between the two studies is thus between 2 to 5 years. We next
+evaluate BMI and fat composition for the study participants, first split by
+gender and then by case/control definition.
+
+```{r}
+#' BMI, fat etc.
+n_anthro <- nafldData("anthro")
+rownames(n_anthro) <- n_anthro$AID
+
+met_data$BMI <- n_anthro[rownames(met_data), "naan03"]
+met_data$body_fat <- n_anthro[rownames(met_data), "naan04"]
+met_data$visc_fat <- n_anthro[rownames(met_data), "naan05"]
+```
+
+We next evaluate the clinical examinations performed on all participants.
+
+```{r}
+#' Clinical examinations
+tmp <- nafldData("clinical")
+rownames(tmp) <- tmp$AID
+```
+
+We will use and evaluate the following parameters defined by a clinical
+examination:
+
+- *naab11*: liver stiffness (higher values are worse). Values for participants
+  that have a *naab12* (liver stiffness IQR) > 30 should be either removed or
+  taken with care.
+- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness
+  measurements. Values below 30 are considered OK.
+- *naab13*: liver fat. Can be binarized at an absolute value of 288.
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
+  to 3. Values 2 and 3 can be considered steatotic.
+- *nascfib4*: fibrosis 4 index. Linear score calculated from standard clinical
+  parameters.
+- *nascmets*: metabolic syndrome, binary category.
+
+```{r}
+met_data$liver_stiffness <- tmp[rownames(met_data), "naab11"]
+met_data$liver_stiffness_iqr <- tmp[rownames(met_data), "naab12"]
+met_data$liver_fat <- tmp[rownames(met_data), "naab13"]
+met_data$visual_fat <- tmp[rownames(met_data), "naab14"]
+met_data$fib4 <- tmp[rownames(met_data), "nascfib4"]
+met_data$metsym <- tmp[rownames(met_data), "nascmets"]
+```
+
+In next table, general overview for all metabolites are presented (mean, 
+standard deviation, coefficients of variation of QC samples):
+
+```{r}
+Table_1 <- data.frame(
+    #Metabolite = metabolites,
+    Class = met_ann[metabolites,"analyte_class"],
+    Mean = colMeans(met_data[, metabolites], na.rm = TRUE),
+    SD = sapply(met_data[, metabolites], sd, na.rm = TRUE),
+    qc_cv = met_ann[metabolites, "cv_qc_chris"])
+    #CV_QC = rowData(chris_plasma_proteins)$cv_qc)
+datatable(Table_1) |>
+formatRound(columns = seq(2, ncol(Table_1)), digits = 3)
+```
+
+# Missing value imputation
+
+
+Percentage of missing values per metabolite:
+
+```{r NAs}
+
+NAsPerc <- sort( 100 * colSums(is.na(met_data[, metabolites])) / 
+                 nrow(met_data), decreasing = TRUE)
+round(NAsPerc, 2) [1:10]
+```
+
+For PCA analyses we impute missing values (missing because of technical 
+problems) replacing them with random values from the same distribution than the
+actual measurements are.
+
+```{r pca-imputation}
+## To perform PCA, full data matrix without NAs is needed. Remaining missing
+## values with a flag of -9 are replaced with random numbers from the normal
+## distribution, considering all non-missing metabolites (considering their mean
+## and standard deviation).
+
+met_data_imp <- met_data
+
+##  define metabolites to impute (only numeric part of data):
+MetToImpute_3 <- names(which(colSums(
+    is.na(met_data[, metabolites])) != 0))
+## make function to impute NAs with random values from normal distribution:
+ImputeOneByOne_NDist <- function(VarWithNAs, DataWithNAs) {
+    Mean <- mean(DataWithNAs[,VarWithNAs], na.rm = TRUE)
+    SDv <- sd(DataWithNAs[,VarWithNAs], na.rm = TRUE)
+    MissVal_2 <- which(is.na(DataWithNAs[, VarWithNAs]))
+    set.seed(7) ##to have repeatible rundom numbers ## to avoid negative values
+    DataWithNAs[MissVal_2, VarWithNAs] <- rnorm(length(MissVal_2),
+                                                mean = Mean, sd = SDv)
+    DataWithNAs[, VarWithNAs]
+}
+## impute all at once:
+met_data_imp[, MetToImpute_3] <- sapply(MetToImpute_3, function(x)
+    ImputeOneByOne_NDist(x, met_data_imp))
+```
+
+
+# Outlier detection
+
+Outlier detection was performed using robust PCA as described by Hubert et al.
+2005 and implemented in the rrcov package for R
+[@todorovObjectOrientedFrameworkRobust2009].
+It is important to be aware of possible outliers, because they can affect the
+results of some possible future analyses (e.g. some parametric multivariate
+methods like PLS is highly sensitive to them).
+In addition, they can provide us insight into some possible technical issues
+during measurements or they can detect samples with some interestin biological
+properties (with high or low abundances of some metabolites).
+In next figure, diagnostic plot of the dataset based on two robust principal
+components is presented:
+
+```{r, PCA_Hubert, fig.path = IMAGE_PATH, fig.width=12, fig.height=10}
+## outlier identification:
+par(mfrow=c(1,1))
+pca_Hubert <- PcaHubert(met_data_imp[, metabolites])
+plot(pca_Hubert)
+```
+
+Looking at the plot there are no clear outliers.
+
+
+# General unsupervised grouping of samples (PCA)
+
+In next figures, scores and loadings from the PCA are presented considering all
+metabolites.
+Prior the PCA, data is normalized to 0 mean and standard deviation of 1
+(z-score or autoscaling).
+Plot shows the scores and loadings of all subjects in the space of the first 3
+PCs, with almost 39% of total variances explained.
+
+In next PCA, samples are colored acordin sample sex:
+
+```{r}
+##
+scaledData <- scale(met_data_imp[, metabolites], scale = TRUE)
+scPCA <- svd(scaledData)
+scPCA.scores <- scPCA$u %*% diag(scPCA$d)    ## scores
+scPCA.loadings <- scPCA$v                    ## loadings
+scPCA.variances <- round(100*((scPCA$d^2)/sum(scPCA$d^2)),1)[1:10]
+rownames(scPCA.loadings) <- metabolites
+
+plot3d(scPCA.scores[,1], scPCA.scores[,2], scPCA.scores[,3], xlab=paste("PC 1(",
+       scPCA.variances[1], "%)", sep = ""), ylab = paste("PC 2(",
+       scPCA.variances[2], "%)", sep = ""), zlab = paste("PC 3(",
+       scPCA.variances[3], "%)", sep = ""), pch = 19,
+       col = as.integer(met_data_imp$Sex))
+#text3d(39*scPCA.loadings[,1:3], texts=rownames(scPCA.loadings), col="darkgrey")
+#coords <- NULL
+#for (i in 1:nrow(scPCA.loadings)) {
+#  coords <- rbind(coords, rbind(c(0,0,0),39*scPCA.loadings[i,1:3]))}
+#lines3d(coords, col="darkgrey", lwd=1)
+rglwidget()
+```
+
+There is a discrimination between males and females!
+
+
+In next PCA, study samples are colored by case/control definition:
+
+```{r}
+
+plot3d(scPCA.scores[,1], scPCA.scores[,2], scPCA.scores[,3], xlab=paste("PC 1(",
+       scPCA.variances[1], "%)", sep = ""), ylab = paste("PC 2(",
+       scPCA.variances[2], "%)", sep = ""), zlab = paste("PC 3(",
+       scPCA.variances[3], "%)", sep = ""), pch = 19,
+       col = as.integer(met_data_imp$case))
+rglwidget()
+```
+
+Also here, there is moderate shift beetween 2 groups!
+
+
+# General clustering of analytes
+
+In this section we aim to identify metabolites with highly correlated (or anti
+correlated) concentrations to potentially get some more detailed insides into
+the dataset. For that, Pearson correlation coefficients between all metabolites
+are computed and visualized.  To detect groups with correlated metabolites which
+might belong from the same class, correlation network analysis is
+performed. 
+
+
+## Correlation analyses
+
+Pearson's correlation coefficients between all metabolites are computed, grouped
+and visualized:
+
+```{r, corr-plot-features, fig.path = IMAGE_PATH, fig.width = 12, fig.height = 10}
+cormat <- cor(met_data[, metabolites], method = "pearson", 
+              use = "pairwise.complete.obs")
+reorder_cormat <- function(cormat){
+    ## Use correlation between variables as distance
+    dd <- as.dist((1-cormat)/2)
+    hc <- hclust(dd)
+    cormat <- cormat[hc$order, hc$order]
+}
+## Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+}
+# Reorder the correlation matrix
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+# Create a ggheatmap
+ggpHMap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value)) +
+geom_tile(color = "white") + scale_fill_gradient2(low = "blue", high = "red",
+mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab",
+name="Pearson\nCorrelation") + theme_minimal() +
+theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1),
+axis.text.y = element_text(vjust = 1, size = 10, hjust = 1),
+axis.title.x = element_blank(), axis.title.y = element_blank(),
+panel.grid.major = element_blank(), panel.border = element_blank(),
+panel.background = element_blank(), axis.ticks = element_blank(),
+legend.justification = c(1, 0), legend.position = c(0.6, 0.7),
+legend.direction = "horizontal") + coord_fixed()
+ggplotly(ggpHMap)
+```
+
+There is a large number of metabolites and figure is not very clear. Please zoom 
+in the part of figure which you want to analyse further.
+All correlation coefficients are summariezed in table and ordered according
+the Pearson correlation coefficients:
+
+```{r, message = FALSE}
+CorTable <- melted_cormat[order(melted_cormat[,3],decreasing=TRUE),]
+colnames(CorTable) <- c("Prot. 1", "Prot. 2", "Corr")
+## exclude the results between the same metabolites
+CorTable_2 <- CorTable[-c(which(CorTable[, 1] == CorTable[,2])),]
+datatable(CorTable_2, caption = "Pearson correlations between all proteins") %>%
+formatRound(columns = "Corr", digits = 4)
+```
+
+In addition we cluster the metabolites based on their pairwise correlation
+coefficient.
+
+```{r corr-heatmap-features, fig.path = IMAGE_PATH, fig.width = 16, fig.height = 14}
+cormat2 <- cormat
+rownames(cormat2) <- met_ann[rownames(cormat),"analyte_class"]
+pheatmap(cormat2)
+```
+
+
+## Correlation network analysis
+
+To identify groups of highly corraleted metabolites, correlation network 
+analysis is performed. Weighted gene coexpression network analysis (WGCNA) 
+implemented in the WGCNA R package is used for determining groups (modules) of 
+higlhy correlated metabolites
+[@langfelderWGCNAPackageWeighted2008][@langfelderFastFunctionsRobust2012].
+Modules are identified using unsupervised clustering Dynamic Branch Cut method
+with a minimal number of 3 metabolites per module.
+Note that modules are randomly assigned colors, while unassigned metabolites are
+grouped in the grey module.
+Results are visualized with hierarchical clustering dendrogram and correlations
+between all metabolites grouped together are computed.
+
+In next figure, there is a hierarchical cluster tree of the 175 metabolites,
+color-coded according to the identified modules (groups):
+
+```{r WGCNA_figure, fig.path = IMAGE_PATH, results='hide', message=FALSE, warning=FALSE, fig.width=32, fig.height=20, out.width='1600px'}
+## WGCNA
+# Choose a set of soft thresholding powers
+powers <- c(1:20) # in practice this should include powers up to 20.
+# choose power based on SFT criterion
+sft <- pickSoftThreshold(met_data[, metabolites], powerVector = powers,
+                         networkType = "unsigned")
+## https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/faq.html
+## point 6: low connectivity; soft-thresholding power = 6
+adjacencyA1 <- adjacency(met_data[, metabolites], power = sft$powerEstimate, 
+                         type = "unsigned")
+diag(adjacencyA1) <- 0
+dissTOMA1 <- 1 - TOMsimilarity(adjacencyA1, TOMType = "unsigned")
+colnames(dissTOMA1) <- colnames(adjacencyA1)
+biomTreeA1 <- flashClust(as.dist(dissTOMA1), method = "average")
+mColorh <- NULL
+tree <- cutreeHybrid(dendro = biomTreeA1, pamStage = FALSE, minClusterSize = 3,
+                     cutHeight = 0.99, deepSplit = 3, distM = dissTOMA1)
+mColorh <- cbind(mColorh,labels2colors(tree$labels))
+plotDendroAndColors(biomTreeA1, mColorh, paste("dpSplt =", 3),
+                    main = "Hierarchical cluster",dendroLabels = NULL)
+```
+
+If parameters are in the same and long branch, means that they are correlated.
+Because of large number of metabolites with a long names figure is not clear, 
+thus tables are provided.
+Numbers of the metabolites associatet to each module are presented here:
+
+```{r}
+# To take out module information
+GroupVar <- cbind(metabolites, mColorh)
+orderedGV <- GroupVar[order(GroupVar[, 2]), ]
+## number of variables per module:
+sort(table(orderedGV[, 2]))
+```
+
+We next create tables for all groups of correlated metabolites. Shown are the 
+analytical class and the mean correlation of the metabolite against all 
+metabolites within the cluster (including itself).
+
+```{r, results = "asis"}
+clusters <- split(GroupVar[, 1], GroupVar[, 2])
+clusters <- clusters[order(lengths(clusters))]
+
+clust_table <- function(x) {
+    cormat_x <- cormat[x, x]
+    data.frame(
+        Class  = met_ann[x,"analyte_class"],
+        mean_cor = rowMeans(cormat_x))
+}
+
+for (cluster in clusters) {
+    pandoc.table(clust_table(cluster), style = "rmarkdown", split.table = "Inf")
+}
+```
+
+Most of the clusters with highly correlated metabolites make biologically
+sense. 
+
+In next table, identified correlated metabolites per module with correlation
+coefficients are presented:
+
+```{r}
+##  Take module membership info and check correlations per module!
+corPerModul <- function (Data, colour) {
+colourModule <- round(cor(Data[,orderedGV[which(orderedGV[,2]==colour),1]],
+                          use = "pairwise.complete.obs"), 4)
+colourModule[lower.tri(colourModule)] <- NA
+diag(colourModule) <- NA
+colourModule = as.data.frame(as.table(colourModule))
+colourModule = na.omit(colourModule)
+colourModule[,"Module"] <- colour
+return(colourModule)
+}
+cluster_colors <- unique(mColorh)
+cluster_colors <- cluster_colors[cluster_colors != "grey"]
+CorrPerModule <- do.call(rbind.data.frame,
+                         lapply(cluster_colors, function(z)
+                             corPerModul(met_data[, metabolites], z)))
+colnames(CorrPerModule)[3] <- "Corr"
+datatable(CorrPerModule, caption = "Correlations per module")
+```
+
+Seems that there are moderate to strong correlations between metabolites which
+belongs to the same module (group).
+
+
+# Session information
+
+R packages used for the analysis:
+
+```{r}
+sessionInfo()
+```
+
+# References
