@@ -1,0 +1,446 @@
+---
+title: "NAFLD associated Scanning SWATH proteins"
+author: "Nikola Dordevic, Johannes Rainer"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+#bibliography: references.bib
+---
+
+**Modified**: `r file.info("NAFLD_related_proteins.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r biocstyle, echo = FALSE, results = "hide", message = FALSE}
+#' rmarkdown format settings
+library(BiocStyle)
+library(knitr)
+opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 8, fig.height = 7)
+BiocStyle::markdown()
+```
+
+```{r settings}
+#' General settings
+filename <- "NAFLD_related_proteins"
+#' Path to save images to
+IMAGE_PATH <- paste0("images/", filename, "/")
+if (file.exists(IMAGE_PATH))
+    unlink(IMAGE_PATH, recursive = TRUE)
+dir.create(IMAGE_PATH, recursive = TRUE)
+#' Path to store RData files
+RDATA_PATH <- paste0("data/RData/", filename, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+chris_path <- "."
+```
+
+
+# Introduction
+
+This document describes the analysis to identify Scanning SWATH proteins that 
+are related to liver stiffness.
+
+
+# Data import
+
+Below we load all required packages for the analysis and retrieve the data.
+
+```{r libraries}
+library(chrisUtils)
+library(chrisData)
+library(nafldData)
+library(RColorBrewer)
+library(pander)
+library(pheatmap)
+library(DT)
+library(ggfortify)
+library(ggplot2)
+library(ggpubr)
+library(reshape2)
+library(plotly)
+options(rgl.useNULL = TRUE)
+library(rgl)
+library(readxl)
+library(writexl)
+library(tidyfr)
+#library(atc)
+```
+
+The data from Scanning Swath was converted into the TDF format and can hence be
+loaded and imported using the `tidyfr` R package. Now we read the full data
+which includes general information for each measurement along with the
+quantified protein levels.
+
+
+```{r, message = FALSE}
+##
+scan <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.1",
+                    path = ".")
+protSS_data <- data(scan)
+protSS_ann <- labels(scan)
+stopifnot(all(colnames(protSS_data) == rownames(protSS_ann)))
+colnames(protSS_data) <- protSS_ann$description
+rownames(protSS_ann) <- protSS_ann$description
+## define the columns with peptide concentrations
+proteins <- rownames(protSS_ann)[protSS_ann$Genes != ""]
+protSS_data <- protSS_data[, proteins]
+```
+
+Scaninng SWATH data is already log2 transformed!
+Before proceeding with the data analysis we restrict to samples from the NAFLD 
+study.
+
+```{r keep-NAFLDs, message = FALSE, warning = FALSE}
+protSS_data <- protSS_data[grep("^008", rownames(protSS_data)), ]
+```
+
+Demographics of the NAFLD cohort and evaluation of available trait data.
+
+```{r}
+n_anns <- nafldTraitAnnotations()
+#' personal data
+n_perso <- nafldData("personal")
+rownames(n_perso) <- n_perso$AID
+##                                          
+protSS_data$AID <- n_perso[rownames(protSS_data), "AID"]
+protSS_data$AID_CHRIS <- n_perso[rownames(protSS_data), "aid_chris"]
+protSS_data$Age <- n_perso[rownames(protSS_data), "na_ager"]
+protSS_data$Sex <- n_perso[rownames(protSS_data), "na_sex"]
+protSS_data$fwup <- n_perso[rownames(protSS_data), "na_fwup"]
+#' na_ager: rounded age
+#' na_fwup: follow-up duration CHRIS->NAFLD
+tmp <- nafldData("recruitment")
+rownames(tmp) <- tmp$AID
+protSS_data$case <- tmp[rownames(protSS_data), "na_case"]
+```
+
+The time span between the two studies is thus between 2 to 5 years. We next
+evaluate BMI and fat composition for the study participants, first split by
+gender and then by case/control definition.
+
+```{r}
+#' BMI, fat etc.
+n_anthro <- nafldData("anthro")
+rownames(n_anthro) <- n_anthro$AID
+
+protSS_data$BMI <- n_anthro[rownames(protSS_data), "naan03"]
+protSS_data$body_fat <- n_anthro[rownames(protSS_data), "naan04"]
+protSS_data$visc_fat <- n_anthro[rownames(protSS_data), "naan05"]
+```
+
+We next evaluate the clinical examinations performed on all participants.
+
+```{r}
+#' Clinical examinations
+tmp <- nafldData("clinical")
+rownames(tmp) <- tmp$AID
+```
+
+We will use and evaluate the following parameters defined by a clinical
+examination:
+
+- *naab11*: liver stiffness (higher values are worse). Values for participants
+  that have a *naab12* (liver stiffness IQR) > 30 should be either removed or
+  taken with care.
+- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness
+  measurements. Values below 30 are considered OK.
+- *naab13*: liver fat. Can be binarized at an absolute value of 288.
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
+  to 3. Values 2 and 3 can be considered steatotic.
+- *nascfib4*: fibrosis 4 index. Linear score calculated from standard clinical
+  parameters.
+- *nascmets*: metabolic syndrome, binary category.
+
+```{r}
+protSS_data$liver_stiffness <- tmp[rownames(protSS_data), "naab11"]
+protSS_data$liver_stiffness_iqr <- tmp[rownames(protSS_data), "naab12"]
+protSS_data$liver_fat <- tmp[rownames(protSS_data), "naab13"]
+protSS_data$visual_fat <- tmp[rownames(protSS_data), "naab14"]
+protSS_data$fib4 <- tmp[rownames(protSS_data), "nascfib4"]
+protSS_data$metsym <- tmp[rownames(protSS_data), "nascmets"]
+```
+
+We exclude  measurements/participants that have a value >= 30 for variable 
+"naab12" (which  is the liver stiffness IQR). The liver stiffness values for 
+these are expected to be of bad quality.
+
+```{r}
+protSS_data <- protSS_data[-which(protSS_data$liver_stiffness_iqr >= 30),]
+```
+
+# General data overview and visualization
+ 
+In resulting dataset, there are `r length(proteins)` proteins measured from`
+r nrow(protSS_data)` samples in total and general overview of the trait is 
+summarized below:
+
+```{r, message=FALSE}
+Overview <- summary(
+        protSS_data[, c("Sex", "Age", "BMI", "case", "body_fat", "visc_fat", 
+                        "liver_stiffness" , "liver_stiffness_iqr", "liver_fat",     
+                        "visual_fat", "fib4", "metsym")])
+print(Overview)
+```
+
+                        
+Pearson correlation between liver stiffness and BMI:
+
+```{r}
+cor(protSS_data$liver_stiffness, protSS_data$BMI, use = "complete.obs")
+```
+
+Spearman correlation between liver stiffness and BMI:
+
+```{r}
+cor(protSS_data$liver_stiffness, protSS_data$BMI, method = "spearman", 
+    use = "complete.obs")
+```
+ 
+In next figure, BMI vs. liver stiffness is visualized in scatter plot. Points 
+are colored acording case-control info and shaped with sample sex:
+
+```{r, BP_PVCbyBMI_fig2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+BMIbyliver_stiffness <- ggplot(protSS_data, aes(x = liver_stiffness, y = BMI, 
+color = case, shape = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + labs(title = "BMI Vs. liver stiffness") +
+theme_bw ()
+ggplotly(BMIbyliver_stiffness)
+```
+
+
+Histogram of liver stiffness is visualized as a raw score and after log and log2 
+transformation:
+
+```{r, hist_fig, fig.path = IMAGE_PATH, fig.width=10, fig.height=4}
+##
+par(mfrow = c(1, 3))
+hist(protSS_data$liver_stiffness, main ="raw score")
+hist(log(protSS_data$liver_stiffness), main ="Log transformed")
+hist(log2(protSS_data$liver_stiffness), main ="Log2 transformed")
+```
+
+
+# Linear regression analysis
+
+To identify proteins related with liver stiffness, linear regression models 
+are fitted for all proteins separately (as a response) and sex, age and liver 
+stiffness as a covariates. 
+Model coefficients and p-values are provided. Raw p-values are adjusted for 
+multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+   
+```{r, message=FALSE}
+## make a function for LM
+FunForLinReg <- function(AnalyteName, Data) {
+    Analyte <- Data[, AnalyteName]
+    LMReg <- lm(Analyte ~ Sex + Age + liver_stiffness,
+                data = Data)
+    res <- coef(summary(LMReg))[-1, ]
+    p.Values <- data.frame(c(res[, 1],
+                             res[, 4]))
+    names(p.Values) <- AnalyteName
+    rownames(p.Values) <- c(paste0("coef_", rownames(res)),
+                            paste0("p-value_", rownames(res)))
+    return(p.Values)
+}
+## do it in one run
+
+LMRegtests <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg(x, protSS_data)))
+Test_output <- t(LMRegtests)
+## Adjusting for multiple hypothesis testing
+adjp <- apply(Test_output[, grep("p-value", colnames(Test_output))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+Test_output <- cbind(Test_output, adjp)
+```
+
+To obtain comparable coefficients, prior to linear modelling all the proteins
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant).
+In autoscaled data, difference of 1 corresponds to standard deviation of 1.
+This parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r, message=FALSE}
+## perform data normalization (autoscaling)
+protSS_data_AS <- protSS_data
+protSS_data_AS[,proteins] <- scale(protSS_data_AS[,proteins], scale = TRUE)
+## do it in one run
+LMRegtests_AS <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg(x, protSS_data_AS)))
+Test_output_AS <- t(LMRegtests_AS)
+EffectSize <- Test_output_AS[,grep("coef",colnames(Test_output_AS))]
+colnames(EffectSize) <- sub("coef", "effect_size", colnames(EffectSize))
+```
+
+To call a proteins *significant* we require that it has, in addition to an
+adjusted p-value smaller than 0.05, also a difference in abundances (expressed
+in percentage) which is at least once as high as the coefficient of variation
+for that proteine. The coefficient of variation was calculated on the QC CHRIS
+Pool samples hence it represents the technical variability that was observed for
+each protein.
+
+Below we add thus evaluate for each protein and comparison whether it fulfills
+that criteria.
+
+```{r define-significant}
+#' Calculate the (absolute) difference in abundance expressed as a percentage
+#' based on a (log2) coefficient.
+diff_percentage <- function(x) {
+    (2^abs(x) - 1) * 100
+}
+comps <- colnames(Test_output)[grep("coef", colnames(Test_output))]
+#' restrict to categorical variables
+comps <- comps[comps != "coef_Age"]
+diff_perc <- apply(Test_output[, comps],
+                   MARGIN = 2, diff_percentage) 
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))   
+#' define which metabolites are considered significant
+sigs <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    Test_output[, paste0("p-adj_", z)] < 0.05 &
+        diff_perc[, paste0("diff_perc_", z)] > 
+                                       100 * protSS_ann[proteins, "cv_qc_chris"]
+})
+sigs <- do.call(cbind, sigs)
+colnames(sigs) <- sub("coef", "significant", comps)
+#' Add the significant for numeric variable
+sigs <- cbind(sigs, significant_Age = Test_output[, "p-adj_Age"] < 0.05)
+sigs[,"significant_liver_stiffness"] <- Test_output[, "p-adj_liver_stiffness"] < 0.05
+```
+
+The number of protein called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below.
+
+```{r table-sig-mets, results = "asis"}
+sig_tab <- apply(Test_output[, grep("adj", colnames(Test_output))], 2,
+                 function(z) sum(z < 0.05))
+names(sig_tab) <- sub("p-adj_", "", names(sig_tab))
+sig_tab <- data.frame(
+    `p_adj < 0.05` = sig_tab,
+    significant = colSums(sigs[, paste0("significant_", names(sig_tab))]),
+    check.names = FALSE)
+pandoc.table(data.frame(no_sign = sig_tab, check.names = FALSE),
+             style = "rmarkdown",
+             caption = "Number of significant proteins for each comparison.")
+```
+
+Export results:
+
+```{r export-results}
+results <- data.frame(
+    protSS_ann[rownames(Test_output), c("Genes", "long_description")],
+    Test_output,
+    EffectSize,
+    diff_perc,
+    sigs)
+```
+
+Volcano plot for the liver stiffness. Red colored points are those with an 
+adjusted p-value smaller than 0.05.
+
+
+```{r FIG-volcano-sex, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
+plot_volcano <- function(x, comparison = character(), ...) {
+    X <- x[, paste0("coef_", comparison)]
+    Y <- x[, paste0("p.adj_", comparison)]
+    Y[Y == 0] <- min(Y > 0) / 10
+    plot(X, -log10(Y), pch = 21,
+         col = "#000000ce", bg = "#00000060",
+         xlab = "coefficient", ylab = expression(-log[10](p[adjusted])),
+         ...)
+}
+significant_points <- function(x, comparison = character(),
+                               diff_perc = 2, col = "#E41A1CCE",
+                               bg = "#E41A1C40", ...) {
+    sig <- x[, paste0("significant_", comparison)]
+    X <- x[, paste0("coef_", comparison)]
+    Y <- x[, paste0("p.adj_", comparison)]
+    Y[Y == 0] <- min(Y > 0) / 10
+    if (any(sig))
+        points(X[sig], -log10(Y[sig]), col = col, bg = bg, pch = 21)
+}
+plot_volcano(results, "liver_stiffness", main = "liver stiffness")
+abline(h = -log10(0.05), lty = 2, col = "grey")
+significant_points(results, comparison = "liver_stiffness")
+```
+
+The (static) table with the significant proteins is shown below:
+
+```{r table-sig-sex, results = "asis", echo = FALSE}
+significant_table <- function(x, comparison = character(),
+                              columns = c("Genes", "long_description")) {
+ sigs <- x[, paste0("significant_", comparison)]
+ columns <- c(columns, paste0(c("coef_", "p.adj_", "effect_size_"), comparison))
+ tmp <- x[sigs, columns]
+ tmp <- tmp[order(tmp[, paste0("p.adj_", comparison)]), ]
+ colnames(tmp) <- sub(paste0("_", comparison), "", colnames(tmp))
+ tmp
+}
+sig_tab <- significant_table(results, "liver_stiffness")
+## save significant
+Signif_AllAges <- rownames(sig_tab)
+##
+pandoc.table(sig_tab[, !colnames(sig_tab) %in% c("Genes", "long_description")],
+             style = "rmarkdown", split.table = Inf,
+             caption = "Significant protein for liver stiffness")
+```
+
+Show in table with the results for all proteins from the test ordered with the 
+tests p-values and effect size:
+
+```{r table-top-20, results = "asis"}
+##
+Order <- results[order(results[, "p.value_liver_stiffness"]), ]
+#pandoc.table(Order[1:5, c(2, 6, 14, 22, 45)], style = "rmarkdown", 
+#             split.table = Inf, caption = "Top 5 metabolites for PVC")
+datatable(Order[,c(1, 2, 5, 8, 11, 14, 18)]) %>%
+          formatRound(columns=c(3:6), digits = 6)
+```
+
+
+There are six significantly associated proteins for liver stiffness!
+Significant proteins (top 3) are visualized in boxplot in next figure. Points 
+are colored according to sample sex.
+
+```{r, f1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+Sp_f1 <- ggplot(protSS_data, aes(x = liver_stiffness, y = `P02774;P02774-3`, 
+color = case, shape = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + theme_bw ()
+ggplotly(Sp_f1)
+```
+
+```{r, f2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+Sp_f2 <- ggplot(protSS_data, aes(x = liver_stiffness, y = P04004, 
+color = case, shape = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + theme_bw ()
+ggplotly(Sp_f2)
+```
+   
+```{r, f3, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+Sp_f3 <- ggplot(protSS_data, aes(x = liver_stiffness, y = O95445, 
+color = case, shape = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + theme_bw ()
+ggplotly(Sp_f3)
+```
+
+
+# Conclusion
+
+
+# Session information
+
+R packages used for the analysis:
+
+```{r}
+sessionInfo()
+```
+
+# References
