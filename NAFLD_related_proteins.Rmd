@@ -6,7 +6,7 @@ output:
   BiocStyle::html_document:
     toc_float: true
     code_folding: hide
-#bibliography: references.bib
+bibliography: references.bib
 ---
 
 **Modified**: `r file.info("NAFLD_related_proteins.Rmd")$mtime`<br />
@@ -38,7 +38,7 @@ chris_path <- "."
 # Introduction
 
 This document describes the analysis to identify Scanning SWATH proteins that 
-are related to liver stiffness.
+are related to liver stiffness, FIB4 variable and liver fat.
 
 
 # Data import
@@ -165,13 +165,13 @@ We exclude  measurements/participants that have a value >= 30 for variable
 these are expected to be of bad quality.
 
 ```{r}
-protSS_data <- protSS_data[-which(protSS_data$liver_stiffness_iqr >= 30),]
+protSS_data2 <- protSS_data[-which(protSS_data$liver_stiffness_iqr >= 30),]
 ```
 
 # General data overview and visualization
  
-In resulting dataset, there are `r length(proteins)` proteins measured from`
-r nrow(protSS_data)` samples in total and general overview of the trait is 
+In resulting dataset, there are `r length(proteins)` proteins measured from 
+`r nrow(protSS_data)` samples in total and general overview of the trait is 
 summarized below:
 
 ```{r, message=FALSE}
@@ -200,7 +200,7 @@ In next figure, BMI vs. liver stiffness is visualized in scatter plot. Points
 are colored acording case-control info and shaped with sample sex:
 
 ```{r, BP_PVCbyBMI_fig2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
-BMIbyliver_stiffness <- ggplot(protSS_data, aes(x = liver_stiffness, y = BMI, 
+BMIbyliver_stiffness <- ggplot(protSS_data2, aes(x = liver_stiffness, y = BMI, 
 color = case, shape = Sex)) + geom_point() + 
 theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
 axis.title.y = element_blank()) + labs(title = "BMI Vs. liver stiffness") +
@@ -220,14 +220,46 @@ hist(log(protSS_data$liver_stiffness), main ="Log transformed")
 hist(log2(protSS_data$liver_stiffness), main ="Log2 transformed")
 ```
 
+Histogram of FIB4 is visualized as a raw score and after log and log2 
+transformation:
 
-# Linear regression analysis
+```{r, hist_fig2, fig.path = IMAGE_PATH, fig.width=10, fig.height=4}
+##
+par(mfrow = c(1, 3))
+hist(protSS_data$fib4, main ="raw score")
+hist(log(protSS_data$fib4), main ="Log transformed")
+hist(log2(protSS_data$fib4), main ="Log2 transformed")
+```
 
-To identify proteins related with liver stiffness, linear regression models 
-are fitted for all proteins separately (as a response) and sex, age and liver 
-stiffness as a covariates. 
+Histogram of liver fat is visualized as a raw score and after log and log2 
+transformation:
+
+```{r, hist_fig3, fig.path = IMAGE_PATH, fig.width=10, fig.height=4}
+##
+par(mfrow = c(1, 3))
+hist(protSS_data$liver_fat, main ="raw score")
+hist(log(protSS_data$liver_fat), main ="Log transformed")
+hist(log2(protSS_data$liver_fat), main ="Log2 transformed")
+```
+
+
+# Methods
+
+To identify proteins related with liver stiffness, FIB4 variable and liver fat, 
+seaparate linear regression models are fitted for all proteins separately (as a 
+response) and sex, age and liver stiffness, FIB4 or liver fat, as a covariates. 
 Model coefficients and p-values are provided. Raw p-values are adjusted for 
 multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+For the liver stiffness analysis, we remove subjects with liver stiffness values 
+larger or equal than 30 (`r nrow(protSS_data2)` subjects in total). For other 
+analyses (FIB4 variable and liver fat) there is no need to remove/exclude values 
+like for the liver stiffness above (`r nrow(protSS_data)` subjects)!
+
+
+# Results 
+
+## Liver stiffness analysis
 
    
 ```{r, message=FALSE}
@@ -248,7 +280,7 @@ FunForLinReg <- function(AnalyteName, Data) {
 
 LMRegtests <- do.call(cbind.data.frame,
                       lapply(proteins,
-                             function(x) FunForLinReg(x, protSS_data)))
+                             function(x) FunForLinReg(x, protSS_data2)))
 Test_output <- t(LMRegtests)
 ## Adjusting for multiple hypothesis testing
 adjp <- apply(Test_output[, grep("p-value", colnames(Test_output))],
@@ -266,12 +298,12 @@ differences.
 
 ```{r, message=FALSE}
 ## perform data normalization (autoscaling)
-protSS_data_AS <- protSS_data
-protSS_data_AS[,proteins] <- scale(protSS_data_AS[,proteins], scale = TRUE)
+protSS_data2_AS <- protSS_data2
+protSS_data2_AS[,proteins] <- scale(protSS_data2_AS[,proteins], scale = TRUE)
 ## do it in one run
 LMRegtests_AS <- do.call(cbind.data.frame,
                       lapply(proteins,
-                             function(x) FunForLinReg(x, protSS_data_AS)))
+                             function(x) FunForLinReg(x, protSS_data2_AS)))
 Test_output_AS <- t(LMRegtests_AS)
 EffectSize <- Test_output_AS[,grep("coef",colnames(Test_output_AS))]
 colnames(EffectSize) <- sub("coef", "effect_size", colnames(EffectSize))
@@ -404,31 +436,482 @@ datatable(Order[,c(1, 2, 5, 8, 11, 14, 18)]) %>%
 
 
 There are six significantly associated proteins for liver stiffness!
-Significant proteins (top 3) are visualized in boxplot in next figure. Points 
-are colored according to sample sex.
+Significant proteins adjusted for age and sex (top 3) are visualized in boxplot 
+in next figure. Points are colored according to sample sex.
 
 ```{r, f1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
-Sp_f1 <- ggplot(protSS_data, aes(x = liver_stiffness, y = `P02774;P02774-3`, 
-color = case, shape = Sex)) + geom_point() + 
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+
+nas <- is.na(protSS_data2[, c("Sex", "Age", "liver_stiffness", "P02774;P02774-3")])
+Data_noNA <- protSS_data2[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_stiffness", "P02774;P02774-3")]
+
+LMReg <- lm(`P02774;P02774-3` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f1 <- ggplot(ResData, aes(x = liver_stiffness, y = `Residuals`, 
+color = Sex)) + geom_point() + 
 theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
-axis.title.y = element_blank()) + theme_bw ()
+axis.title.y = element_blank()) + ggtitle ("P02774;P02774-3") + theme_bw ()
 ggplotly(Sp_f1)
 ```
 
 ```{r, f2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
-Sp_f2 <- ggplot(protSS_data, aes(x = liver_stiffness, y = P04004, 
-color = case, shape = Sex)) + geom_point() + 
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+
+nas <- is.na(protSS_data2[, c("Sex", "Age", "liver_stiffness", "P04004")])
+Data_noNA <- protSS_data2[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_stiffness", "P04004")]
+
+LMReg <- lm(`P04004` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f2 <- ggplot(ResData, aes(x = liver_stiffness, y = `Residuals`, 
+color = Sex)) + geom_point() + 
 theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
-axis.title.y = element_blank()) + theme_bw ()
+axis.title.y = element_blank()) + ggtitle ("P04004") + theme_bw ()
 ggplotly(Sp_f2)
 ```
-   
+
 ```{r, f3, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
-Sp_f3 <- ggplot(protSS_data, aes(x = liver_stiffness, y = O95445, 
-color = case, shape = Sex)) + geom_point() + 
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data2[, c("Sex", "Age", "liver_stiffness", "O95445")])
+Data_noNA <- protSS_data2[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_stiffness", "O95445")]
+
+LMReg <- lm(`O95445` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f3 <- ggplot(ResData, aes(x = liver_stiffness, y = `Residuals`, 
+color = Sex)) + geom_point() + 
 theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
-axis.title.y = element_blank()) + theme_bw ()
+axis.title.y = element_blank()) + ggtitle ("O95445") + theme_bw ()
 ggplotly(Sp_f3)
+```
+
+
+## FIB4 analysis
+
+   
+```{r, message=FALSE}
+## make a function for LM
+FunForLinReg2 <- function(AnalyteName, Data) {
+    Analyte <- Data[, AnalyteName]
+    LMReg <- lm(Analyte ~ Sex + Age + fib4,
+                data = Data)
+    res <- coef(summary(LMReg))[-1, ]
+    p.Values <- data.frame(c(res[, 1],
+                             res[, 4]))
+    names(p.Values) <- AnalyteName
+    rownames(p.Values) <- c(paste0("coef_", rownames(res)),
+                            paste0("p-value_", rownames(res)))
+    return(p.Values)
+}
+## do it in one run
+
+LMRegtests2 <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg2(x, protSS_data)))
+Test_output2 <- t(LMRegtests2)
+## Adjusting for multiple hypothesis testing
+adjp <- apply(Test_output2[, grep("p-value", colnames(Test_output2))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+Test_output2 <- cbind(Test_output2, adjp)
+```
+
+To obtain comparable coefficients, prior to linear modelling all the proteins
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant).
+In autoscaled data, difference of 1 corresponds to standard deviation of 1.
+This parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r, message=FALSE}
+## perform data normalization (autoscaling)
+protSS_data_AS <- protSS_data
+protSS_data_AS[,proteins] <- scale(protSS_data_AS[,proteins], scale = TRUE)
+## do it in one run
+LMRegtests2_AS <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg2(x, protSS_data_AS)))
+Test_output2_AS <- t(LMRegtests2_AS)
+EffectSize <- Test_output2_AS[,grep("coef",colnames(Test_output2_AS))]
+colnames(EffectSize) <- sub("coef", "effect_size", colnames(EffectSize))
+```
+
+To call a proteins *significant* we require that it has, in addition to an
+adjusted p-value smaller than 0.05, also a difference in abundances (expressed
+in percentage) which is at least once as high as the coefficient of variation
+for that proteine. The coefficient of variation was calculated on the QC CHRIS
+Pool samples hence it represents the technical variability that was observed for
+each protein.
+
+Below we add thus evaluate for each protein and comparison whether it fulfills
+that criteria.
+
+```{r define-significant2}
+
+comps <- colnames(Test_output2)[grep("coef", colnames(Test_output2))]
+#' restrict to categorical variables
+comps <- comps[comps != "coef_Age"]
+diff_perc <- apply(Test_output2[, comps],
+                   MARGIN = 2, diff_percentage) 
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))   
+#' define which metabolites are considered significant
+sigs <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    Test_output2[, paste0("p-adj_", z)] < 0.05 &
+        diff_perc[, paste0("diff_perc_", z)] > 
+                                       100 * protSS_ann[proteins, "cv_qc_chris"]
+})
+sigs <- do.call(cbind, sigs)
+colnames(sigs) <- sub("coef", "significant", comps)
+#' Add the significant for numeric variable
+sigs <- cbind(sigs, significant_Age = Test_output2[, "p-adj_Age"] < 0.05)
+sigs[,"significant_fib4"] <- Test_output2[, "p-adj_fib4"] < 0.05
+```
+
+The number of protein called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below.
+
+```{r table2-sig-mets, results = "asis"}
+sig_tab <- apply(Test_output2[, grep("adj", colnames(Test_output2))], 2,
+                 function(z) sum(z < 0.05))
+names(sig_tab) <- sub("p-adj_", "", names(sig_tab))
+sig_tab <- data.frame(
+    `p_adj < 0.05` = sig_tab,
+    significant = colSums(sigs[, paste0("significant_", names(sig_tab))]),
+    check.names = FALSE)
+pandoc.table(data.frame(no_sign = sig_tab, check.names = FALSE),
+             style = "rmarkdown",
+             caption = "Number of significant proteins for each comparison.")
+```
+
+Export results:
+
+```{r export-results2}
+results2 <- data.frame(
+    protSS_ann[rownames(Test_output2), c("Genes", "long_description")],
+    Test_output2,
+    EffectSize,
+    diff_perc,
+    sigs)
+```
+
+Volcano plot for the FIB4. Red colored points are those with an adjusted p-value 
+smaller than 0.05.
+
+
+```{r FIG-volcano-fib4, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the FIB4. Red colored points are those with an adjusted p-value smaller than 0.05."}
+
+plot_volcano(results2, "fib4", main = "fib4")
+abline(h = -log10(0.05), lty = 2, col = "grey")
+significant_points(results2, comparison = "fib4")
+```
+
+The (static) table with the significant proteins is shown below:
+
+```{r table-sig-fib4, results = "asis", echo = FALSE}
+
+sig_tab <- significant_table(results2, "fib4")
+## save significant
+Signif_AllAges <- rownames(sig_tab)
+##
+pandoc.table(sig_tab[, !colnames(sig_tab) %in% c("Genes", "long_description")],
+             style = "rmarkdown", split.table = Inf,
+             caption = "Significant protein for FIB4")
+```
+
+Show in table with the results for all proteins from the test ordered with the 
+tests p-values and effect size:
+
+```{r table2-top-20, results = "asis"}
+##
+Order2 <- results2[order(results2[, "p.value_fib4"]), ]
+#pandoc.table(Order[1:5, c(2, 6, 14, 22, 45)], style = "rmarkdown", 
+#             split.table = Inf, caption = "Top 5 metabolites for PVC")
+datatable(Order2[,c(1, 2, 5, 8, 11, 14, 18)]) %>%
+          formatRound(columns=c(3:6), digits = 6)
+```
+
+There are 24 significantly associated proteins for FIB4!
+Significant proteins adjusted for age and sex (top 3) are visualized in boxplot 
+in next figure. Points are colored according to sample sex.
+
+```{r, f4, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "fib4", "P00738")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "fib4", "P00738")]
+
+LMReg <- lm(`P00738` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f4 <- ggplot(ResData, aes(x = fib4, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P00738") + theme_bw ()
+ggplotly(Sp_f4)
+```
+
+```{r, f5, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "fib4", "P05546")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "fib4", "P05546")]
+
+LMReg <- lm(`P05546` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f5 <- ggplot(ResData, aes(x = fib4, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P05546") + theme_bw ()
+ggplotly(Sp_f5)
+```
+
+```{r, f6, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "fib4", "P01619")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "fib4", "P01619")]
+
+LMReg <- lm(`P01619` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f6 <- ggplot(ResData, aes(x = fib4, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P01619") + theme_bw ()
+ggplotly(Sp_f6)
+```
+
+
+## Liver fat analysis
+
+   
+```{r, message=FALSE}
+## make a function for LM
+FunForLinReg3 <- function(AnalyteName, Data) {
+    Analyte <- Data[, AnalyteName]
+    LMReg <- lm(Analyte ~ Sex + Age + liver_fat,
+                data = Data)
+    res <- coef(summary(LMReg))[-1, ]
+    p.Values <- data.frame(c(res[, 1],
+                             res[, 4]))
+    names(p.Values) <- AnalyteName
+    rownames(p.Values) <- c(paste0("coef_", rownames(res)),
+                            paste0("p-value_", rownames(res)))
+    return(p.Values)
+}
+## do it in one run
+
+LMRegtests3 <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg3(x, protSS_data)))
+Test_output3 <- t(LMRegtests3)
+## Adjusting for multiple hypothesis testing
+adjp <- apply(Test_output3[, grep("p-value", colnames(Test_output3))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+Test_output3 <- cbind(Test_output3, adjp)
+```
+
+To obtain comparable coefficients, prior to linear modelling all the proteins
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant).
+In autoscaled data, difference of 1 corresponds to standard deviation of 1.
+This parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r, message=FALSE}
+## perform data normalization (autoscaling)
+protSS_data_AS <- protSS_data
+protSS_data_AS[,proteins] <- scale(protSS_data_AS[,proteins], scale = TRUE)
+## do it in one run
+LMRegtests3_AS <- do.call(cbind.data.frame,
+                      lapply(proteins,
+                             function(x) FunForLinReg3(x, protSS_data_AS)))
+Test_output3_AS <- t(LMRegtests3_AS)
+EffectSize <- Test_output3_AS[,grep("coef",colnames(Test_output3_AS))]
+colnames(EffectSize) <- sub("coef", "effect_size", colnames(EffectSize))
+```
+
+To call a proteins *significant* we require that it has, in addition to an
+adjusted p-value smaller than 0.05, also a difference in abundances (expressed
+in percentage) which is at least once as high as the coefficient of variation
+for that proteine. The coefficient of variation was calculated on the QC CHRIS
+Pool samples hence it represents the technical variability that was observed for
+each protein.
+
+Below we add thus evaluate for each protein and comparison whether it fulfills
+that criteria.
+
+```{r define-significant3}
+
+comps <- colnames(Test_output3)[grep("coef", colnames(Test_output3))]
+#' restrict to categorical variables
+comps <- comps[comps != "coef_Age"]
+diff_perc <- apply(Test_output3[, comps],
+                   MARGIN = 2, diff_percentage) 
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))   
+#' define which metabolites are considered significant
+sigs <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    Test_output3[, paste0("p-adj_", z)] < 0.05 &
+        diff_perc[, paste0("diff_perc_", z)] > 
+                                       100 * protSS_ann[proteins, "cv_qc_chris"]
+})
+sigs <- do.call(cbind, sigs)
+colnames(sigs) <- sub("coef", "significant", comps)
+#' Add the significant for numeric variable
+sigs <- cbind(sigs, significant_Age = Test_output3[, "p-adj_Age"] < 0.05)
+sigs[,"significant_liver_fat"] <- Test_output3[, "p-adj_liver_fat"] < 0.05
+```
+
+The number of protein called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below.
+
+```{r table3-sig-mets, results = "asis"}
+sig_tab <- apply(Test_output3[, grep("adj", colnames(Test_output3))], 2,
+                 function(z) sum(z < 0.05))
+names(sig_tab) <- sub("p-adj_", "", names(sig_tab))
+sig_tab <- data.frame(
+    `p_adj < 0.05` = sig_tab,
+    significant = colSums(sigs[, paste0("significant_", names(sig_tab))]),
+    check.names = FALSE)
+pandoc.table(data.frame(no_sign = sig_tab, check.names = FALSE),
+             style = "rmarkdown",
+             caption = "Number of significant proteins for each comparison.")
+```
+
+Export results:
+
+```{r export-results3}
+results3 <- data.frame(
+    protSS_ann[rownames(Test_output3), c("Genes", "long_description")],
+    Test_output3,
+    EffectSize,
+    diff_perc,
+    sigs)
+```
+
+Volcano plot for the liver fat. Red colored points are those with an adjusted 
+p-value smaller than 0.05.
+
+
+```{r FIG-volcano-liver_fat, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver fat. Red colored points are those with an adjusted p-value smaller than 0.05."}
+
+plot_volcano(results3, "liver_fat", main = "liver fat")
+abline(h = -log10(0.05), lty = 2, col = "grey")
+significant_points(results3, comparison = "liver_fat")
+```
+
+The (static) table with the significant proteins is shown below:
+
+```{r table-sig-liver_fat, results = "asis", echo = FALSE}
+
+sig_tab <- significant_table(results3, "liver_fat")
+## save significant
+Signif_AllAges <- rownames(sig_tab)
+##
+pandoc.table(sig_tab[, !colnames(sig_tab) %in% c("Genes", "long_description")],
+             style = "rmarkdown", split.table = Inf,
+             caption = "Significant protein for liver fat")
+```
+
+Show in table with the results for all proteins from the test ordered with the 
+tests p-values and effect size:
+
+```{r table3-top-20, results = "asis"}
+##
+Order3 <- results3[order(results3[, "p.value_liver_fat"]), ]
+#pandoc.table(Order[1:5, c(2, 6, 14, 22, 45)], style = "rmarkdown", 
+#             split.table = Inf, caption = "Top 5 metabolites for PVC")
+datatable(Order3[,c(1, 2, 5, 8, 11, 14, 18)]) %>%
+          formatRound(columns=c(3:6), digits = 6)
+```
+
+
+There are 26 significantly associated proteins for liver fat!
+Significant proteins adjusted for age and sex (top 3) are visualized in boxplot 
+in next figure. Points are colored according to sample sex.
+
+
+```{r, f7, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "liver_fat", "P43652")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_fat", "P43652")]
+
+LMReg <- lm(`P43652` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f7 <- ggplot(ResData, aes(x = liver_fat, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P43652") + theme_bw ()
+ggplotly(Sp_f7)
+```
+
+```{r, f8, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "liver_fat", "P04004")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_fat", "P04004")]
+
+LMReg <- lm(`P04004` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f8 <- ggplot(ResData, aes(x = liver_fat, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P04004") + theme_bw ()
+ggplotly(Sp_f8)
+```
+
+```{r, f9, fig.path = IMAGE_PATH, fig.width=10, fig.height=6}
+## We further remove all individuals with missing values for any of the required
+## variables (age, sex, fasting and BMI).
+nas <- is.na(protSS_data[, c("Sex", "Age", "liver_fat", "P01024")])
+Data_noNA <- protSS_data[rowSums(nas) == 0, 
+                         c("Sex", "Age", "liver_fat", "P01024")]
+
+LMReg <- lm(`P01024` ~ Sex + Age, data = Data_noNA)
+residualS <- data.frame(LMReg$residuals)
+ResData <- cbind.data.frame(Data_noNA, residualS)
+colnames(ResData)[5] <- "Residuals"
+
+Sp_f9 <- ggplot(ResData, aes(x = liver_fat, y = `Residuals`, 
+color = Sex)) + geom_point() + 
+theme(axis.text.x = element_text(angle = 90, vjust = 0.8, size = 8),
+axis.title.y = element_blank()) + ggtitle ("P01024") + theme_bw ()
+ggplotly(Sp_f9)
 ```
 
 
