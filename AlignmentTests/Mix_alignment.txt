@@ -1,0 +1,28 @@
+"name"	"abbreviation"	"formula"	"POS"	"NEG"	"RT"	"data_set"	"sample"	"operator"	"version"	"quality_NEG"	"quality_POS"	"mz"	"mzmin"	"mzmax"	"rtmin"	"rtmax"
+"alanine_13C_15N"	"L-Alanine (13C3, 99%; 15N, 99%)"	"alanine_13C_15N"	93.0548	"[M+H]+"	"[M-H]-"	167	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"2_medium"	"1_good"	94.062076	94.012076	94.112076	152	182
+"arginine_13C_15N"	"L-Arginine HCl (13C6, 99%; 15N4, 99%)"	"arginine_13C_15N"	184.1199	"[M+H]+"	"[M-H]-"	183	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	185.127176	185.077176	185.177176	168	198
+"aspartic_13C_15N"	"L-Aspartic acid (13C4, 99%; 15N, 99%)"	"aspartic_13C_15N"	138.048	"[M+H]+"	"[M-H]-"	179	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	139.055276	139.005276	139.105276	164	194
+"cystine_13C_15N"	"L-Cystine (13C6, 99%; 15N2, 99%)"	"cystine_13C_15N"	248.038	"[M+H]+"	"[M-H]-"	208	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	249.045276	248.995276	249.095276	193	223
+"glutamic_13C_15N"	"L-Glutamic acid (13C5, 99%; 15N, 99%)"	"glutamic_13C_15N"	153.067	"[M+H]+"	"[M-H]-"	170	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	154.074276	154.024276	154.124276	155	185
+"glycine_13C_15N"	"Glycine (13C2, 99%; 15N, 99%)"	"glycine_13C_15N"	78.0358	"[M+H]+"	NA	167	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"3_bad"	"1_good"	79.043076	78.993076	79.093076	152	182
+"histidine_13C_15N"	"L-Histidine HCl H2O (13C6; 15N3, 99%)"	"histidine_13C_15N"	164.0807	"[M+H]+"	"[M-H]-"	185	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	165.087976	165.037976	165.137976	170	200
+"lysine_13C_15N"	"L-Lysine 2HCl (13C6, 99%; 15N2, 99%)"	"lysine_13C_15N"	154.1197	"[M+H]+"	"[M-H]-"	184	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"0_perfect"	155.126976	155.076976	155.176976	169	199
+"threonine_13C_15N"	"L-Threonine (13C4, 99%; 15N, 99%)"	"threonine_13C_15N"	124.0687	"[M+H]+"	"[M-H]-"	169	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	125.075976	125.025976	125.125976	154	184
+"tyrosine_13C_15N"	"L-Tyrosine (13C9, 99%; 15N, 99%)"	"tyrosine_13C_15N"	191.1011	"[M+H]+"	"[M-H]-"	166	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	192.108376	192.058376	192.158376	151	181
+"valine_13C_15N"	"L-Valine (13C5, 99%; 15N, 99%)"	"valine_13C_15N"	123.0928	"[M+H]+"	"[M-H]-"	164	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	124.100076	124.050076	124.150076	149	179
+"caffeine"	"Caffeine"	"caffeine"	194.0804	"[M+H]+"	NA	35	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"3_bad"	195.087676	195.037676	195.137676	20	50
+"carnitine_c4"	"C4 Carnitine"	"carnitine_c4"	231.14706	"[M+H]+"	NA	37	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"2_medium"	"3_bad"	232.154336	232.104336	232.204336	22	52
+"ADMA"	"ADMA"	"ADMA"	202.14298	"[M+H]+"	"[M-H]-"	176	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	203.150256	203.100256	203.200256	161	191
+"glycero_phosphocholine"	"Glycero-phosphocholine"	"glycero_phosphocholine"	257.10282	"[M+H]+"	"[M+Cl]-"	189	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	258.110096	258.060096	258.160096	174	204
+"serine"	"Serine"	"serine"	105.04259	"[M+H]+"	"[M-H]-"	177	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	106.049866	105.999866	106.099866	162	192
+"sphingosine"	"Sphingosine"	"sphingosine"	299.28243	"[M+H]+"	"[M+CHO2]-"	30	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"3_bad"	300.289706	300.239706	300.339706	15	45
+"taurine"	"Taurine"	"taurine"	125.01466	"[M+H]+"	"[M-H]-"	170	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	126.021936	125.971936	126.071936	155	185
+"inosine"	"Inosine"	"inosine"	268.08077	"[M+Na]+"	"[M-H]-"	145	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	291.06999	291.01999	291.11999	130	160
+"pipecolic"	"Pipecolic acid"	"pipecolic"	129.07898	"[M+H]+"	"[M-H]-"	176	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	130.086256	130.036256	130.136256	161	191
+"proline"	"Proline"	"proline"	115.06333	"[M+H]+"	"[M-H]-"	167	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	116.070606	116.020606	116.120606	152	182
+"SDMA"	"SDMA"	"SDMA"	202.14298	"[M+H]+"	"[M-H]-"	174	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	203.150256	203.100256	203.200256	159	189
+"guanidoacetic"	"Guanidoacetic acid"	"guanidoacetic"	117.05383	"[M+H]+"	"[M-H]-"	163	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	118.061106	118.011106	118.111106	148	178
+"acetylcarnitine"	"Acetylcarnitine"	"acetylcarnitine"	203.11576	"[M+H]+"	NA	35	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"2_medium"	"3_bad"	204.123036	204.073036	204.173036	20	50
+"indolelactic"	"Indolelactic acid"	"indolelactic"	205.07389	"[M+H]+"	"[M-H]-"	35	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	206.081166	206.031166	206.131166	20	50
+"aminoadipic"	"alpha-Aminoadipic acid"	"aminoadipic"	161.06881	"[M+H]+"	"[M-H]-"	163	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	162.076086	162.026086	162.126086	148	178
+"isovalerylglycine"	"Isovalerylglycine"	"isovalerylglycine"	159.08954	"[M+H]+"	"[M-H]-"	35	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	160.096816	160.046816	160.146816	20	50
