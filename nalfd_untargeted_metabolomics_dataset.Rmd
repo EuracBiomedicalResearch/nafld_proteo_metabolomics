@@ -26,7 +26,7 @@ pd$time_stamp <- as.character(pd$time_stamp)
 Next we store the MS data into a RSQLite database.
 
 ```{r}
-fls <- file.path("/data/massspec/mzML", pd$path, pd$file_name)
+fls <- file.path("data", pd$mzML_file)
 
 library(RSQLite)
 con <- dbConnect(SQLite(), dbname = "data/NAFLD_untargeted.sqlite")
@@ -54,7 +54,6 @@ dbListTables(con)
 dbGetQuery(con, "select * from sample_data limit 4")
 dbGetQuery(con, "select * from sample_to_msms_spectrum limit 4")
 ```
-
 
 ## Create a `MsExperiment` representing the data
 
@@ -131,6 +130,39 @@ nafld_pos <- nafld[sampleData(nafld)$polarity == "POS"]
 nafld_neg <- nafld[sampleData(nafld)$polarity == "NEG"]
 ```
 
+# Add sample link in SQL database
+
+```{r}
+#' Install Johannes branch method - change this once it's merged and published
+#' remotes::install_github("RforMassSpectrometry/MsExperiment", ref = "jomain")
+
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+sps$file_name <- basename(dataOrigin(sps))
+pd <- as.data.frame(read_xlsx("data/nafld_hilic_files.xlsx"))
+
+#' Create MsExperiment and fill with data
+nafld <- MsExperiment()
+sampleData(nafld) <- DataFrame(pd)
+spectra(nafld) <- sps
+
+nafld <- linkSampleData(nafld, with = "sampleData.file_name = spectra.file_name")
+
+#' Write sample data to the database
+dbWriteSampleData(nafld)
+```
+
+
+To load after that
+
+```{r}
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+nafld <- MsExperiment(spectra = sps)
+nafld
+```
 
 # Session information
 

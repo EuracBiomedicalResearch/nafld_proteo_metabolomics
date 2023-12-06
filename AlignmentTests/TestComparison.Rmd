@@ -1,0 +1,171 @@
+---
+title: "Comparison of adjustedRTIme strategies"
+author: "Philippine Louail"
+date: "2023-12-04"
+output: html_document
+---
+
+```{r packages used, message=FALSE, warning=FALSE}
+library(MsExperiment)
+library(xcms)
+library(Spectra)
+library(RColorBrewer)
+library(pander)
+library(readxl)
+library(MetaboCoreUtils)
+library(pheatmap)
+library(CompMetaboTools) # might want to get rid of this one though.
+library(MetaboAnnotation)
+library(MatrixGenerics)
+``` 
+
+This Document summarize the different strategy I tried for adjsuting the retention time of the NAFLD dataset as the classic parameters was 
+not satisfying. 
+
+To note "A mix standard list" was created specifically for nafld Rtime adjustment. It is comprised of the IS that we spiked the samples with and some common compounds that I filtered visually. this helps the anchor peaks ot be more distributed along the retention time axis and thus for better alignment. 
+
+Here is a summary of the strategy 
+
+- Strategy A:  Normal parameters, one run, correspondence analysis followed by adjustment based on pool samples only 
+- Strategy B: First run with a defined peak matrix for all sample ( - blanks), followed by second run with correspondence and adjustment based on pool samples only 
+- Strategy C: First run with a defined peak matrix for pool samples, followed by second run with correspondence and adjustment based on pool samples only 
+- Strategy D: Only 1 run based on peak matrix 
+(these are ran in separate rmd files)
+
+First create a table of chrompeaks name for each samples for each IS. 
+
+- table of IS for alignment. Here jsut showing how I build it.
+```{r eval=FALSE, include=FALSE}
+#' the inital table was a complete mix of IS spiked and standard manually selected from known compounds. only peaks that were clearly defined were selected. 
+alignment_standard <- read.delim("Mix_IS_standard.txt") 
+alignment_standard <- alignment_standard[!is.na(alignment_standard$POS), ]
+rownames(alignment_standard) <- alignment_standard$abbreviation
+
+#'generate calcualte formula
+alignment_standard$mz <- mapply(alignment_standard$formula, 
+                             alignment_standard$POS,
+                             FUN = mass2mz)
+
+#' replace RT by obs 
+alignment_standard$RT <- c(167, 183, 179, 208, 170, 167, 185, 184, 169,
+                               166, 164, 35, 37, 176, 189, 177, 30, 170, 145,
+                               176, 167, 174, 163,  35, 35, 163, 35)
+#' not sure i am choosing the right peak for pipecolic acid but it is very
+#'  clean so still nice to observe and base alignment on this
+
+#' Fit for each standards
+alignment_standard$mzmin <- alignment_standard$mz - 0.05
+alignment_standard$mzmax <- alignment_standard$mz + 0.05
+alignment_standard$rtmin <- alignment_standard$RT - 15
+alignment_standard$rtmax <- alignment_standard$RT + 15
+
+#' Save this table (also alignment for Strategy B/C/D is based on this)
+write.table(alignment_standard, "Mix_alignment.txt", sep = "\t")
+```
+
+load raw NAFLD after peak detection/refinement and load the standard
+table used for this alignment. 
+
+```{r}
+load("nafld_after_refine")
+standard <- read.delim("Mix_alignment.txt")
+
+# get chromPeak data
+fdef <- as.data.frame(chromPeaks(nafld))
+fdef$feature_id <- rownames(fdef)
+
+#' prep result of loop
+final_table <- matrix(
+    ncol = 530, 
+    nrow = nrow(standard), 
+    dimnames = list(c(row.names(standard)), c(1:530))
+)
+
+#' Keep only matches with highest intensity 
+rem_dups <- function(x) {
+    if (nrow(matches(x)) > 1)
+        filterMatches(x, index = integer())
+    else x
+}
+
+#' Get chromPeaks ID 
+for (i in unique(fdef$sample)){
+    tmp <- fdef[fdef[,"sample"]== i, ]
+    if(sampleData(nafld)$sample_type[i] != "Blank") {
+        match_intern_standard <- matchValues(
+        query = standard,
+        target = tmp,
+        mzColname = c("mz", "mz"),
+        rtColname = c("RT", "rt" ),
+        param = MzRtParam(ppm = 50, toleranceRt = 20))
+    match_intern_standard <- MetaboAnnotation::endoapply(match_intern_standard,
+                                                     FUN = rem_dups)
+    final_table[,i] <- match_intern_standard$target_feature_id
+    } 
+}
+#' if need to use only the pool
+index <- sampleData(nafld)$sample_type != "Blank"
+ID_table <- final_table[, index]
+```
+
+
+Make a matrix of the Rt of these chrompeaks in each alignment strategy (+raw)
+
+```{r}
+#Function to create rt dataframe
+rtdf <- function(nafld, ID_table) {
+    indices <- as.vector(ID_table)
+    fdef <- fdef <- as.data.frame(chromPeaks(nafld))
+    fdef$feature_id <- rownames(fdef)
+    x <- fdef[indices, "rt"]
+    dim(x) <- dim(ID_table)
+    rownames(x) <- rownames(ID_table)
+    colnames(x) <- colnames(ID_table)
+    x
+}
+
+### Raw 
+RTR <- rtdf(nafld, ID_table)
+
+### A
+load("strategyA")
+RTA <- rtdf(nafld, ID_table)
+
+### B
+load("strategyB")
+RTB <- rtdf(nafld, ID_table)
+
+### C
+load("strategyC")
+RTC <- rtdf(nafld, ID_table)
+
+###D
+load("strategyD")
+RTD <- rtdf(nafld, ID_table)
+```
+
+```{r}
+sumNA <- data.frame(
+    Raw = apply(RTR, 1, function(row) {sum(is.na(row))}),
+    A = apply(RTA, 1, function(row) {sum(is.na(row))}), 
+    B = apply(RTB, 1, function(row) {sum(is.na(row))}),
+    C = apply(RTC, 1, function(row) {sum(is.na(row))}), 
+    D = apply(RTD, 1, function(row) {sum(is.na(row))})
+)
+
+sumNA
+```
+
+```{r}
+Sdsdf <- data.frame(
+    Raw = rowSds(RTR, na.rm = TRUE),
+    A = rowSds(RTA, na.rm = TRUE),
+    B = rowSds(RTB, na.rm = TRUE),
+    C = rowSds(RTC, na.rm = TRUE),
+    D = rowSds(RTD, na.rm = TRUE)
+)
+
+pandoc.table(Sdsdf, style = "rmarkdown")
+boxplot(Sdsdf, outline = FALSE, xlab = "RT standard deviation")
+```
+
