@@ -46,9 +46,10 @@ library(MsBackendSql)
 library(SummarizedExperiment)
 ```
 
-# Data import 
+# Data import
 
 Create a `MsExperiment` representing the data
+
 ```{r create MsExperiment}
 #' Load the spectra data from the database
 sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
@@ -56,7 +57,7 @@ sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
 
 nafld <- MsExperiment(spectra = sps)
 
-#' Subset for pos 
+#' Subset for pos
 nafld <- nafld[sampleData(nafld)$polarity == "POS"]
 ```
 
@@ -79,10 +80,10 @@ nafld
 ```
 
 ```{r phenodata, echo=FALSE, results='asis'}
-sampleData(nafld)[, c(5, 10, 11, 13)] |> 
+sampleData(nafld)[, c(5, 10, 11, 13)] |>
     as.data.frame() |>
     head() |>
-    pandoc.table(style = "rmarkdown", 
+    pandoc.table(style = "rmarkdown",
                  caption = "Some samples from the data set.")
 ```
 
@@ -92,9 +93,9 @@ sampleData(nafld)[, c(5, 10, 11, 13)] |>
 col_phenotype <- brewer.pal(8, "Accent")[c(1, 3, 5, 4, 8)]
 names(col_phenotype) <- c("Study", "Pool_IS_Dil", "Pool", "Pool_Dil", "Blank")
 
-col_sample <- col_phenotype[sampleData(nafld)$sample_type] 
+col_sample <- col_phenotype[sampleData(nafld)$sample_type]
 
-#' Batches 
+#' Batches
 col_batch_id <- brewer.pal(7, "Paired")[c(4, 3, 1, 5, 2, 6, 7)]
 names(col_batch_id) <- c("BATCH0125", "BATCH0130", "BATCH0143",
                         "BATCH0159", "BATCH0165", "BATCH0169",
@@ -103,8 +104,8 @@ names(col_batch_id) <- c("BATCH0125", "BATCH0130", "BATCH0143",
 col_batches <- col_batch_id[sampleData(nafld)$batch_id]
 ```
 
-We therefore have an data set of `r length(nafld)` samples for a total 
-of `r length(spectra(nafld))` spectra. 
+We therefore have an data set of `r length(nafld)` samples for a total
+of `r length(spectra(nafld))` spectra.
 
 The retention time range for the entire data set is: `r range(rtime(spectra(nafld)))`
 
@@ -112,45 +113,45 @@ Get some data overview to be sure everything is fine:
 
 ```{r some healthy stuff}
 #' check number of spectra per file
-fromFile(nafld) |> 
-    table() 
+fromFile(nafld) |>
+    table()
 ```
 
 No sample with below average number of spectra
 
-# Visualisation 
+# Visualisation
 
 ## BPC
 
 ```{r filter rtime}
-#' Filter for ret time 
+#' Filter for ret time
 nafld <- filterRt(nafld, c(10, 250))
 ```
 
 ```{r plot again, include=FALSE}
 #' Plot again
-chromatogram(nafld, aggregationFun = "max") |>
-    plot(col = col_sample, main = "BPC after filtering",  lwd = 0.8)
-    grid()
-    legend("topright", col = col_phenotype, legend = names(col_phenotype),
-           lty = 1)
+chromatogram(nafld, aggregationFun = "max", chunkSize = 6) |>
+    plot(col = col_sample, main = "BPC after filtering", lwd = 0.8)
+grid()
+legend("topright", col = col_phenotype, legend = names(col_phenotype),
+       lty = 1)
 ```
 
 ## Internal standards
 
 Here just generate EICs for all standard, see the EIC_IS folder for the images.
-Code will be displayed for the first one as an example but not for the others. 
+Code will be displayed for the first one as an example but not for the others.
 
-### All 
+### All
 
 ```{r EIC extract for internal standard, include=FALSE}
-#' get the list 
-intern_standard <- read.delim("internal_standards.txt") 
+#' get the list
+intern_standard <- read.delim("internal_standards.txt")
 intern_standard <- intern_standard[!is.na(intern_standard$POS), ]
 rownames(intern_standard) <- intern_standard$abbreviation
 
 #'generate calcualte formula
-intern_standard$mz <- mapply(intern_standard$formula, 
+intern_standard$mz <- mapply(intern_standard$formula,
                              intern_standard$POS,
                              FUN = mass2mz)
 
@@ -170,7 +171,7 @@ dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main =intern_standard$name[i], 
+    plot(eics[i, ], main = intern_standard$name[i],
          col = col_sample)
     grid()
     legend("topright", col = col_phenotype,
@@ -179,7 +180,7 @@ for (i in seq_len(nrow(intern_standard))) {
     dev.off()
 }
 
-#' Add info on the EICs: 
+#' Add info on the EICs:
 #' - ...
 ```
 
@@ -193,7 +194,7 @@ dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main =intern_standard$name[i], col = col_batches)
+    plot(eics[i, ], main = intern_standard$name[i], col = col_batches)
     grid()
     legend("topright", col = col_batch_id,
            legend = names(col_batch_id), lty = 1)
@@ -202,32 +203,28 @@ for (i in seq_len(nrow(intern_standard))) {
 }
 ```
 
-### Only study samples 
+### Only study samples
 
 Only the study samples colored by batches
 
 ```{r EIC-study, include=FALSE}
 #' select for study samples
-study_sample <-grep("Study", sampleData(nafld)$sample_type)
-study_sample <- nafld[study_sample]
+study_idx <- grep("Study", sampleData(nafld)$sample_type)
 
-batches_study <- col_batch_id[sampleData(study_sample)$batch_id]
+batches_study <- col_batch_id[sampleData(nafld)$batch_id][study_idx]
 
 dr <- "EIC_IS/sample/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 
-eics <- chromatogram(study_sample, 
-                     mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
-                     rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
-
 for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main =intern_standard$name[i], col = batches_study)
+    plot(eics[i, study_idx], main = intern_standard$name[i],
+         col = batches_study)
     grid()
-    legend("topright", 
-           col = col_batch_id, 
-           legend = names(col_batch_id), 
+    legend("topright",
+           col = col_batch_id,
+           legend = names(col_batch_id),
            lty = 1)
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
@@ -239,12 +236,8 @@ for (i in seq_len(nrow(intern_standard))) {
 The pool samples colored by batches.
 
 ```{r EIC-pool, include=FALSE}
-pool_sample <- nafld[sampleData(nafld)$sample_type == "Pool"]
-batches_pool <- col_batch_id[sampleData(pool_sample)$batch_id]
-
-eics <- chromatogram(pool_sample,
-                     mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
-                     rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
+pool_idx <- which(sampleData(nafld)$sample_type == "Pool")
+batches_pool <- col_batch_id[sampleData(nafld)$batch_id][pool_idx]
 
 dr <- "EIC_IS/Pool_batch/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
@@ -252,7 +245,8 @@ dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main =intern_standard$name[i], col = batches_pool)
+    plot(eics[i, pool_idx], main = intern_standard$name[i],
+         col = batches_pool)
     grid()
     legend("topright",
            col = col_batch_id,
@@ -262,15 +256,15 @@ for (i in seq_len(nrow(intern_standard))) {
     dev.off()
 }
 
-#' get the list 
-standard <- read.delim("standards_dilution_nafld.txt") 
+#' get the list
+standard <- read.delim("standards_dilution_nafld.txt")
 standard <- standard[!is.na(standard$POS), ]
 
 #'generate calcualte formula
 standard$mass <- mapply(standard$formula,
                              FUN = calculateMass)
 
-standard$mz <- mapply(standard$mass, 
+standard$mz <- mapply(standard$mass,
                              standard$POS,
                              FUN = mass2mz)
 
@@ -280,12 +274,7 @@ standard$mzmax <- standard$mz + 0.05
 standard$rtmin <- standard$RT - 15
 standard$rtmax <- standard$RT + 15
 
-pool_sample <- nafld[sampleData(nafld)$sample_type == "Pool"]
-batches_pool <- col_batch_id[sampleData(pool_sample)$batch_id]
-
-eics_s <- chromatogram(pool_sample,
-                     mz = as.matrix(standard[, c("mzmin", "mzmax")]),
-                     rt = as.matrix(standard[, c("rtmin", "rtmax")]))
+eics_s <- eics[, pool_idx]
 
 dr <- "EIC_standard/Pool_batch/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
@@ -304,23 +293,23 @@ for (i in seq_len(nrow(standard))) {
 }
 ```
 
-## Chromatographic info 
+## Chromatographic info
 
 We therefore have an data set of `r length(nafld)` samples for a total of
-`r length(spectra(nafld))` spectra. 
+`r length(spectra(nafld))` spectra.
 
 The retention time range for the entire data set is: `r range(rtime(spectra(nafld)))`
 
 ```{r heatmap, echo=TRUE, fig.height=8, fig.width=7}
-#' Heatmap from total ion chromatogram 
-tic <- chromatogram(nafld, aggregationFun = "sum") |> 
-  bin(binSize = 2)
+#' Heatmap from total ion chromatogram
+tic <- chromatogram(nafld, aggregationFun = "sum") |>
+    bin(binSize = 2)
 
 # Data frame with column annotations.
 ticmap <- do.call(cbind, lapply(tic, intensity)) |>
     cor()
 
-#' yes the code is weird but pheatmap has a weird  problems 
+#' yes the code is weird but pheatmap has a weird  problems
 #' with rownames/colnames handling.
 col_hm <- data.frame(sample_type = sampleData(nafld)[, "sample_type"])
 rownames(col_hm) <- colnames(ticmap)
@@ -335,30 +324,37 @@ rownames(ticmap) <- rownames(row_hm)
 colnames(ticmap) <- rownames(col_hm)
 
 pheatmap(ticmap, annotation_row = row_hm, annotation_col = col_hm,
-         annotation_colors = ann_color, annotation_names_row = FALSE, 
-         annotation_names_col = FALSE, show_rownames = FALSE, 
+         annotation_colors = ann_color, annotation_names_row = FALSE,
+         annotation_names_col = FALSE, show_rownames = FALSE,
          show_colnames = FALSE, annotation_legend = TRUE)
 ```
 
-## Spectra 
+## Spectra
+
 ```{r combine spectra, echo=TRUE}
 #' Combine spectra
 processingChunkSize(nafld@spectra) <- 100000
 #' Combine spectra
 bps <- spectra(nafld) |>
     bin(binSize = 0.01, zero.rm = TRUE) |>
-    combineSpectra(f = fromFile(nafld), p = fromFile(nafld), intensityFun = max,
-                   ppm = 5)
+    combineSpectra(f = fromFile(nafld), p = fromFile(nafld),
+                   intensityFun = max, ppm = 5)
 ```
 
 ```{r compare, echo=TRUE}
-sim_matrix <- compareSpectra(bps) # check which faster
+system.time(
+    sim_matrix <- compareSpectra(bps) # check which faster
+)
+
+system.time(
+    sim_matrix <- compareSpectra(bps, bps)
+)
 ```
 
 ```{r heatmap_sim_matrix, fig.height=8, fig.width=7, include=FALSE}
 pheatmap(sim_matrix, annotation_row = row_hm, annotation_col = col_hm,
-         annotation_colors = ann_color, annotation_names_row = FALSE, 
-         annotation_names_col = FALSE, show_rownames = FALSE, 
+         annotation_colors = ann_color, annotation_names_row = FALSE,
+         annotation_names_col = FALSE, show_rownames = FALSE,
          show_colnames = FALSE, annotation_legend = TRUE)
 processingChunkSize(nafld@spectra) <- Inf
 ```
@@ -368,23 +364,24 @@ save(nafld, file = "after_visu")
 ```
 
 # Preprocessing
+
 ## Chromatographic peak detection
 
-finding cwp parameter 
+finding cwp parameter
 
-- peakwidth: observing previous EIC, expecting between 2 to 20s 
-- ppm: 
+- peakwidth: observing previous EIC, expecting between 2 to 20s
+- ppm:
 
 ```{r ppm parameter }
-#' choose a nice compound here 
-cystine_mz <- calculateMass("C6H12N2O4S2") |> 
+#' choose a nice compound here
+cystine_mz <- calculateMass("C6H12N2O4S2") |>
   mass2mz("[M+H]+")
-  
+
 cystine_mz <- cystine_mz[1, 1]
 
 #' plot to see rt range for one sample
 cst <- chromatogram(nafld[2],
-                    mz = cystine_mz + c(-0.01, 0.01), 
+                    mz = cystine_mz + c(-0.01, 0.01),
                     rt = c(200, 250))
 plot(cst)
 
@@ -409,19 +406,19 @@ range(mz_diff * 1e6 / mean(unlist(mz(cst))))
 
 Chose larger ppm of 30
 But can also see very strong right skew on the EIC. So choose a larger
-peak width to accommodate. 
+peak width to accommodate.
 
 ```{r echo=TRUE}
-#' extract test ion 
-#' for cystine 
+#' extract test ion
+#' for cystine
 eic_cystine <- chromatogram(nafld,
                             rt = c(200, 235),
                             mz = cystine_mz + c(-0.01, 0.01))
 #' histidine
 
-his_mz <- calculateMass("C6H9N3O2") |> 
+his_mz <- calculateMass("C6H9N3O2") |>
   mass2mz("[M+H]+")
-  
+
 his_mz <- his_mz[1, 1]
 
 eic_his <- chromatogram(nafld,
@@ -451,9 +448,9 @@ head(chromPeaks(his_test))
 ```{r echo=TRUE}
 #' Plot test chromatogram
 par(mfrow = c(1, 2))
-plot(cystine_test, 
-     main = "Cystine", 
-     col = paste0(col_sample, 80), 
+plot(cystine_test,
+     main = "Cystine",
+     col = paste0(col_sample, 80),
      peakCol = col_sample[chromPeaks(cystine_test)[, "column"]],
      peakBg = paste0(col_sample, 40)[chromPeaks(cystine_test)[, "column"]])
 grid()
@@ -466,11 +463,11 @@ plot(his_test,
 grid()
 legend("topright", col = col_phenotype, cex = 0.50,
        horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-       text.width = 7, bty = "n", 
+       text.width = 7, bty = "n",
        legend = names(col_phenotype), lty = 1)
 ```
 
-In my opinion looks pretty good, should apply to all data: 
+In my opinion looks pretty good, should apply to all data:
 
 ```{r findchrompkeaks all data, echo=TRUE}
 nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
@@ -480,7 +477,7 @@ save(nafld, file = "after_peakdetect")
 
 
 ```{r echo=TRUE}
-#' test for ions of interest 
+#' test for ions of interest
 eic_cystine <- chromatogram(nafld,
                             rt = c(202, 217),
                             mz = cystine_mz + c(-0.01, 0.01),
@@ -492,7 +489,7 @@ eic_his <- chromatogram(nafld,
                         aggregationFun = "max")
 
 par(mfrow = c(1, 2))
-plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80), 
+plot(eic_cystine, main = "Cystine", col = paste0(col_sample, 80),
      peakCol = col_sample[chromPeaks(eic_cystine)[, "sample"]],
      peakBg = paste0(col_sample[chromPeaks(eic_cystine)[, "sample"]], 40))
 grid()
@@ -502,7 +499,7 @@ plot(eic_his, main = "Histidine", col = paste0(col_sample, 80),
 grid()
 legend("topright", col = col_phenotype, cex = 0.50,
        horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-       text.width = 7, bty = "n", 
+       text.width = 7, bty = "n",
        legend = names(col_phenotype), lty = 1)
 ```
 
@@ -511,7 +508,7 @@ legend("topright", col = col_phenotype, cex = 0.50,
 pool_sample <- nafld[sampleData(nafld)$sample_type == "Pool"]
 batches_pool <- col_batch_id[sampleData(pool_sample)$batch_id]
 
-eics <- chromatogram(pool_sample, 
+eics <- chromatogram(pool_sample,
                      mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
                      rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]))
 
@@ -558,7 +555,7 @@ Look at the nb of peak per files
 chromPeaks(nafld)[, "sample"] |>
     table()
 
-#' Maybe could be nice to see per sample type here 
+#' Maybe could be nice to see per sample type here
 chromPeaks(nafld) |>
     head()
 ```
@@ -567,7 +564,7 @@ chromPeaks(nafld) |>
 save(nafld, file= "after_peakdetect")
 ```
 
-### Refine chromatographic peaks 
+### Refine chromatographic peaks
 
 ```{r eval=FALSE, include=FALSE}
 load("after_peakdetect")
@@ -575,14 +572,14 @@ load("after_peakdetect")
 
 
 ```{r merging}
-#' set up the parameter 
+#' set up the parameter
 param <- MergeNeighboringPeaksParam(expandRt = 5,
                                     expandMz = 0.01,
                                     minProp = 0.75)
 ```
 
 ```{r refine dataset,  message=TRUE}
-#' apply to all dataset 
+#' apply to all dataset
 nafld <- refineChromPeaks(nafld, param = param, chunkSize = 10)
 save(nafld, file = "nafld_after_refine")
 
@@ -648,29 +645,29 @@ save(nafld, file = "nafld_after_refine")
 pool_index <- sampleData(nafld)$sample_type == "Pool"
 pool_sample <- nafld[pool_index]
 
-bpc_raw <- chromatogram(pool_sample, aggregationFun = "max", 
+bpc_raw <- chromatogram(pool_sample, aggregationFun = "max",
                         chromPeaks = "none") |>
-    plot(main = "BPC of Pool sample", 
-         col = paste0(batches_pool, 80), 
+    plot(main = "BPC of Pool sample",
+         col = paste0(batches_pool, 80),
          lwd = 0.8)
     grid()
     legend("topright", col = col_batch_id, cex = 0.50,
-           horiz = TRUE,inset = c(-0.18, -0.1), 
+           horiz = TRUE,inset = c(-0.18, -0.1),
            xpd = TRUE, text.width = 7,
-           bty = "n", 
-           legend = names(col_batch_id), 
+           bty = "n",
+           legend = names(col_batch_id),
            lty = 1)
 
 #' standard
 par(mfrow = c(1, 2))
-plot(eic_cystine[1, pool_index], 
-     main = "Cystine", 
+plot(eic_cystine[1, pool_index],
+     main = "Cystine",
      col = paste0(batches_pool, 80))
 grid()
 abline(v = 211 , col = "red", lty = 3)
 
-plot(eic_his[1, pool_index], 
-     main = "Histidine", 
+plot(eic_his[1, pool_index],
+     main = "Histidine",
      col = paste0(batches_pool, 80))
 grid()
 abline(v = 188 , col = "red", lty = 3)
@@ -706,7 +703,7 @@ nafld <- nafld[index_qc]
 ```
 
 ```{r groupingpeaks}
-# Grouping the peaks according to 
+# Grouping the peaks according to
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type == "Pool",
     minFraction = 0.9,
@@ -722,7 +719,7 @@ nafld <- groupChromPeaks(nafld, param = param)
 sampleData(nafld)$original_index <- seq_along(nafld)
 
 #' determining new order
-index_qc <- 
+index_qc <-
 
 #' applying it
 nafld <- nafld[index_qc, keepFeatures = TRUE] #remove the keep feature thing ?
@@ -742,7 +739,7 @@ param <- PeakGroupsParam(minFraction = 0.9,
 #' Input in the function
 nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
 
-#' remove reordering 
+#' remove reordering
 nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
 
 #' See result
@@ -779,7 +776,7 @@ chromatogram(pool_sample,
     grid()
     legend("topright", col = col_batch_id, cex = 0.50,
            horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-           text.width = 7, bty = "n", 
+           text.width = 7, bty = "n",
            legend = names(col_batch_id), lty = 1)
 ```
 
@@ -801,7 +798,7 @@ plot(eic_cystine[1, pool_index], peakType = "none",
      abline(v = 211 , col = "red", lty = 3)
 legend("topright", col = col_batch_id, cex = 0.50,
        horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-       text.width = 7, bty = "n", 
+       text.width = 7, bty = "n",
        legend = names(col_batch_id), lty = 1)
 
 
@@ -821,7 +818,7 @@ plot(eic_his[1, pool_index], peakType = "none",
      abline(v = 188 , col = "red", lty = 3)
      legend("topright", col = col_batch_id, cex = 0.50,
             horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-            text.width = 7, bty = "n", 
+            text.width = 7, bty = "n",
             legend = names(col_batch_id), lty = 1)
 ```
 
@@ -848,7 +845,7 @@ for (i in seq_len(nrow(intern_standard))) {
 }
 
 #' Extract the EICs
-eics <- chromatogram(nafld, 
+eics <- chromatogram(nafld,
                      mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
                      rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
                      chromPeaks = "none")
@@ -859,11 +856,11 @@ for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
     plot(eics[i],
-         main =intern_standard$name[i], 
-         col = col_sample, 
+         main =intern_standard$name[i],
+         col = col_sample,
          peakType = "none")
     grid()
-    legend("topright", 
+    legend("topright",
            col = col_phenotype,
            legend = names(col_phenotype), lty = 1)
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
@@ -907,28 +904,28 @@ param <- PeakDensityParam(sampleGroups = sampleData(nafld)$sample_type[pool_inde
 
 
 plotChromPeakDensity(
-    eic_cystine[1, pool_index], 
-    param = param, 
-    col = paste0(batches_pool, 80), 
+    eic_cystine[1, pool_index],
+    param = param,
+    col = paste0(batches_pool, 80),
     peakCol = col_batches[chromPeaks(eic_cystine[1, pool_index])[, "sample"]],
-    peakBg = paste0(col_batches[chromPeaks(eic_cystine[1, pool_index])[, "sample"]], 20), 
+    peakBg = paste0(col_batches[chromPeaks(eic_cystine[1, pool_index])[, "sample"]], 20),
     peakPch = 16
     )
 legend("bottomright", col = col_batch_id, cex = 0.50,
        horiz = TRUE, inset = c(0, -0.5), xpd = TRUE,
-       text.width = 4, bty = "n", 
+       text.width = 4, bty = "n",
        legend = names(col_batch_id), lty = 1)
 
 plotChromPeakDensity(
-    eic_his[1, pool_index], param = param, 
-    col = paste0(batches_pool, 80), 
+    eic_his[1, pool_index], param = param,
+    col = paste0(batches_pool, 80),
     peakCol = col_batches[chromPeaks(eic_his[1, pool_index])[, "sample"]],
-    peakBg = paste0(col_batches[chromPeaks(eic_his[1, pool_index])[, "sample"]], 20), 
+    peakBg = paste0(col_batches[chromPeaks(eic_his[1, pool_index])[, "sample"]], 20),
     peakPch = 16
     )
 legend("bottomright", col = col_batch_id, cex = 0.50,
        horiz = TRUE,inset = c(0, -0.5), xpd = TRUE,
-       text.width = 4, bty = "n", 
+       text.width = 4, bty = "n",
        legend = names(col_batch_id), lty = 1)
 ```
 
@@ -945,7 +942,7 @@ pool_sample <- nafld[pool_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
 
 
 ```{r}
-#' Extract chromatogram with signal for isomers 1-Methylhistidine and 
+#' Extract chromatogram with signal for isomers 1-Methylhistidine and
 #' 3-Methylhistidine
 met_mz <- calculateMass("C7H11N3O2")
 met_mz <- mass2mz(met_mz, adduct = "[M+H]+")[1,]
@@ -957,7 +954,7 @@ plotChromPeakDensity(chr_test[1, pool_index], col = paste0(batches_pool, 80),
     peakPch = 16)
 legend("bottomright", col = col_batch_id, cex = 0.50,
        horiz = TRUE,inset = c(0, -0.5), xpd = TRUE,
-       text.width = 4, bty = "n", 
+       text.width = 4, bty = "n",
        legend = names(col_batch_id), lty = 1)
 ```
 
@@ -968,13 +965,13 @@ save(nafld, file = "nafld_after_Cor")
 
 ## Gap filling
 
-Process to try to rescue some (pre-)selected peaks that are only detected in a subset of samples. 
+Process to try to rescue some (pre-)selected peaks that are only detected in a subset of samples.
 ```{r peaks found in a few QC not all, echo=FALSE}
 #' Number of missing values
 sum(is.na(featureValues(nafld)))
 ```
 
-We can see quite a large amount of NA values in our data set. 
+We can see quite a large amount of NA values in our data set.
 
 ```{r}
 nafld <- fillChromPeaks(nafld, param = ChromPeakAreaParam(), chunkSize = 10)
@@ -983,9 +980,9 @@ nafld <- fillChromPeaks(nafld, param = ChromPeakAreaParam(), chunkSize = 10)
 sum(is.na(featureValues(nafld)))
 ```
 
-With `fillChromPeaks` we could thus rescue signal for all but `r sum(is.na(featureValues(nafld)))` features. 
+With `fillChromPeaks` we could thus rescue signal for all but `r sum(is.na(featureValues(nafld)))` features.
 
-Another way to confirm gap-filling rescued signals. use QC sample signals as basis 
+Another way to confirm gap-filling rescued signals. use QC sample signals as basis
 
 ```{r Detected vs filled signal}
 #' Get only detected signal
@@ -1018,7 +1015,7 @@ abline(0, 1)
 ```
 
 
-Then calculate statistics on these values. below we fit a linear regression line to the data and summarize its results 
+Then calculate statistics on these values. below we fit a linear regression line to the data and summarize its results
 ```{r}
 #' fit a linear regression line to the data
 l <- lm(log2(avg_filled) ~ log2(avg_detect))
@@ -1034,19 +1031,19 @@ save(nafld, file = "nafld_after_GF")
 blank_index <- sampleData(nafld)$sample_type == "Blank"
 blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
 
-#' index of features that are detected in blank samples 
+#' index of features that are detected in blank samples
 idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
 
-#' get something like the average intensity for each feature in blank samples 
+#' get something like the average intensity for each feature in blank samples
 
-#' also group the intensity for 
+#' also group the intensity for
 
-# 
+#
 ```
 
-# Next steps 
+# Next steps
 
-separate blanks from others 
+separate blanks from others
 ```{r}
 blank_index <- sampleData(nafld)$sample_type == "Blank"
 blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
@@ -1068,7 +1065,7 @@ res
 
 save(res, file = "SumExp_NAFLD.RData")
 
-# also for blanks 
+# also for blanks
 res_blank <- quantify(blank_sample, method = "sum", filled = FALSE)
 assays(res_blank)$raw_filled <- featureValues(blank_sample, method = "sum",
 filled = TRUE )
