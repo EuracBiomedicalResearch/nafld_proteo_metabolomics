@@ -91,7 +91,7 @@ rem_dups <- function(x) {
 #' Get chromPeaks ID 
 for (i in unique(fdef$sample)){
     tmp <- fdef[fdef[,"sample"]== i, ]
-    if(sampleData(nafld)$sample_type[i] == "Pool") {
+    if(sampleData(nafld)$sample_type[i] != "Blank") {
         match_intern_standard <- matchValues(
         query = standard,
         target = tmp,
@@ -104,7 +104,7 @@ for (i in unique(fdef$sample)){
     } 
 }
 #' if need to use only the pool
-index <- sampleData(nafld)$sample_type == "Pool"
+index <- sampleData(nafld)$sample_type != "Blank"
 ID_table <- final_table[, index]
 ```
 
