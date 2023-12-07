@@ -39,7 +39,7 @@ dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 # Introduction
 
 In this document we perform an unsupervised *exploratory* data analysis of the
-metabolomics data set of the NAFLD study to evaluate and identify any relations 
+metabolomics data set of the NAFLD study to evaluate and identify any relations
 between metabolites and/or participants.
 
 # Data import
@@ -68,25 +68,23 @@ library(rgl)
 library(writexl)
 ```
 
-We next load the data the TDFF data module. 
+We next load the data the TDFF data module.
 
 ```{r, message = FALSE}
-##
-p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.1", path = ".")
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2", path = ".")
 met_data <- data(p180)
 met_ann <- labels(p180)
 stopifnot(all(colnames(met_data) == rownames(met_ann)))
 colnames(met_data) <- met_ann$description
 rownames(met_ann) <- met_ann$description
-## define the columns with peptide concentrations
-metabolites <- rownames(met_ann)[met_ann$type != "categorical"] 
+## define the columns with metabolite concentrations
+metabolites <- rownames(met_ann)[met_ann$type != "categorical"]
 met_data <- met_data[, metabolites]
 ```
 
 Perform log2 transformation!
 
 ```{r log2-transformation, message = FALSE}
-##
 met_data <- log2(met_data)
 ```
 
@@ -97,10 +95,11 @@ we restrict to samples from the NAFLD study.
 met_data <- met_data[grep("^008", rownames(met_data)), ]
 ```
 
+
 # General data overview
 
 In this dataset `r ncol(met_data)` metabolites measured from `r nrow(met_data)`
-samples collected from the NAFLD study are evaluated. Note that all metabolites 
+samples collected from the NAFLD study are evaluated. Note that all metabolites
 are log2 transformed.
 
 Distributions of all 175 metabolites are visualized in histograms.
@@ -109,8 +108,8 @@ Distributions of all 175 metabolites are visualized in histograms.
 PlotHist <- function(AnlName) {
     Anl <- met_data[, AnlName]
     plot(density(Anl, na.rm = T), col = 2, main = AnlName,
-                                               xlab = "Conc.")
-    }
+         xlab = "Conc.")
+}
 anlts <- colnames(met_data)
 splits <- rep(seq_len(ceiling(length(anlts) / 12)), each = 12)
 splits <- splits[1:length(anlts)]
@@ -123,7 +122,6 @@ for (i in seq_along(anlts)) {
 }
 ```
 
-
 Demographics of the NAFLD cohort and evaluation of available trait data.
 
 ```{r}
@@ -132,8 +130,6 @@ n_anns <- nafldTraitAnnotations()
 #' personal data
 n_perso <- nafldData("personal")
 rownames(n_perso) <- n_perso$AID
-#met_data <- n_perso[rownames(met_data), c("AID", "aid_chris", "na_ager", 
-#                                          "na_sex", "na_fwup")]
 met_data$AID <- n_perso[rownames(met_data), "AID"]
 met_data$AID_CHRIS <- n_perso[rownames(met_data), "aid_chris"]
 met_data$Age <- n_perso[rownames(met_data), "na_ager"]
@@ -150,8 +146,7 @@ met_data$case <- tmp[rownames(met_data), "na_case"]
 ```
 
 The time span between the two studies is thus between 2 to 5 years. We next
-evaluate BMI and fat composition for the study participants, first split by
-gender and then by case/control definition.
+add anthropometric information to our data.
 
 ```{r}
 #' BMI, fat etc.
@@ -163,7 +158,7 @@ met_data$body_fat <- n_anthro[rownames(met_data), "naan04"]
 met_data$visc_fat <- n_anthro[rownames(met_data), "naan05"]
 ```
 
-We next evaluate the clinical examinations performed on all participants.
+Finally, we also add results from clinical evaluations/tests.
 
 ```{r}
 #' Clinical examinations
@@ -171,8 +166,7 @@ tmp <- nafldData("clinical")
 rownames(tmp) <- tmp$AID
 ```
 
-We will use and evaluate the following parameters defined by a clinical
-examination:
+We will add the following parameters defined by a clinical examination:
 
 - *naab11*: liver stiffness (higher values are worse). Values for participants
   that have a *naab12* (liver stiffness IQR) > 30 should be either removed or
@@ -195,13 +189,13 @@ met_data$fib4 <- tmp[rownames(met_data), "nascfib4"]
 met_data$metsym <- tmp[rownames(met_data), "nascmets"]
 ```
 
-In next table, general overview for all metabolites are presented (mean, 
+In next table, general overview for all metabolites are presented (mean,
 standard deviation, coefficients of variation of QC samples):
 
 ```{r}
 Table_1 <- data.frame(
     #Metabolite = metabolites,
-    Class = met_ann[metabolites,"analyte_class"],
+    Class = met_ann[metabolites, "analyte_class"],
     Mean = colMeans(met_data[, metabolites], na.rm = TRUE),
     SD = sapply(met_data[, metabolites], sd, na.rm = TRUE),
     qc_cv = met_ann[metabolites, "cv_qc_chris"])
@@ -210,19 +204,19 @@ datatable(Table_1) |>
 formatRound(columns = seq(2, ncol(Table_1)), digits = 3)
 ```
 
+
 # Missing value imputation
 
 
 Percentage of missing values per metabolite:
 
 ```{r NAs}
-
-NAsPerc <- sort( 100 * colSums(is.na(met_data[, metabolites])) / 
+NAsPerc <- sort( 100 * colSums(is.na(met_data[, metabolites])) /
                  nrow(met_data), decreasing = TRUE)
-round(NAsPerc, 2) [1:10]
+round(NAsPerc, 2)[1:10]
 ```
 
-For PCA analyses we impute missing values (missing because of technical 
+For PCA analyses we impute missing values (missing because of technical
 problems) replacing them with random values from the same distribution than the
 actual measurements are.
 
@@ -231,7 +225,6 @@ actual measurements are.
 ## values with a flag of -9 are replaced with random numbers from the normal
 ## distribution, considering all non-missing metabolites (considering their mean
 ## and standard deviation).
-
 met_data_imp <- met_data
 
 ##  define metabolites to impute (only numeric part of data):
@@ -280,11 +273,10 @@ Looking at the plot there are no clear outliers.
 # General unsupervised grouping of samples (PCA)
 
 In next figures, scores and loadings from the PCA are presented considering all
-metabolites.
-Prior the PCA, data is normalized to 0 mean and standard deviation of 1
-(z-score or autoscaling).
-Plot shows the scores and loadings of all subjects in the space of the first 3
-PCs, with almost 39% of total variances explained.
+metabolites.  Prior the PCA, data is normalized to 0 mean and standard deviation
+of 1 (z-score or autoscaling).  Plot shows the scores and loadings of all
+subjects in the space of the first 3 PCs, with almost 39% of total variances
+explained.
 
 In next PCA, samples are colored acordin sample sex:
 
@@ -317,11 +309,11 @@ In next PCA, study samples are colored by case/control definition:
 
 ```{r}
 
-plot3d(scPCA.scores[,1], scPCA.scores[,2], scPCA.scores[,3], xlab=paste("PC 1(",
-       scPCA.variances[1], "%)", sep = ""), ylab = paste("PC 2(",
-       scPCA.variances[2], "%)", sep = ""), zlab = paste("PC 3(",
-       scPCA.variances[3], "%)", sep = ""), pch = 19,
-       col = as.integer(met_data_imp$case))
+plot3d(scPCA.scores[,1], scPCA.scores[,2], scPCA.scores[,3],
+       xlab=paste("PC 1(", scPCA.variances[1], "%)", sep = ""),
+       ylab = paste("PC 2(", scPCA.variances[2], "%)", sep = ""),
+       zlab = paste("PC 3(", scPCA.variances[3], "%)", sep = ""),
+       pch = 19, col = as.integer(met_data_imp$case))
 rglwidget()
 ```
 
@@ -335,7 +327,7 @@ correlated) concentrations to potentially get some more detailed insides into
 the dataset. For that, Pearson correlation coefficients between all metabolites
 are computed and visualized.  To detect groups with correlated metabolites which
 might belong from the same class, correlation network analysis is
-performed. 
+performed.
 
 
 ## Correlation analyses
@@ -344,7 +336,7 @@ Pearson's correlation coefficients between all metabolites are computed, grouped
 and visualized:
 
 ```{r, corr-plot-features, fig.path = IMAGE_PATH, fig.width = 12, fig.height = 10}
-cormat <- cor(met_data[, metabolites], method = "pearson", 
+cormat <- cor(met_data[, metabolites], method = "pearson",
               use = "pairwise.complete.obs")
 reorder_cormat <- function(cormat){
     ## Use correlation between variables as distance
@@ -364,20 +356,24 @@ upper_tri <- get_upper_tri(cormat)
 melted_cormat <- melt(upper_tri, na.rm = TRUE)
 # Create a ggheatmap
 ggpHMap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value)) +
-geom_tile(color = "white") + scale_fill_gradient2(low = "blue", high = "red",
-mid = "white", midpoint = 0, limit = c(-1,1), space = "Lab",
-name="Pearson\nCorrelation") + theme_minimal() +
-theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1),
-axis.text.y = element_text(vjust = 1, size = 10, hjust = 1),
-axis.title.x = element_blank(), axis.title.y = element_blank(),
-panel.grid.major = element_blank(), panel.border = element_blank(),
-panel.background = element_blank(), axis.ticks = element_blank(),
-legend.justification = c(1, 0), legend.position = c(0.6, 0.7),
-legend.direction = "horizontal") + coord_fixed()
+    geom_tile(color = "white") +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                         midpoint = 0, limit = c(-1,1), space = "Lab",
+                         name="Pearson\nCorrelation") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1,
+                                     size = 10, hjust = 1),
+          axis.text.y = element_text(vjust = 1, size = 10, hjust = 1),
+          axis.title.x = element_blank(), axis.title.y = element_blank(),
+          panel.grid.major = element_blank(), panel.border = element_blank(),
+          panel.background = element_blank(), axis.ticks = element_blank(),
+          legend.justification = c(1, 0), legend.position = c(0.6, 0.7),
+          legend.direction = "horizontal") +
+    coord_fixed()
 ggplotly(ggpHMap)
 ```
 
-There is a large number of metabolites and figure is not very clear. Please zoom 
+There is a large number of metabolites and figure is not very clear. Please zoom
 in the part of figure which you want to analyse further.
 All correlation coefficients are summariezed in table and ordered according
 the Pearson correlation coefficients:
@@ -387,7 +383,7 @@ CorTable <- melted_cormat[order(melted_cormat[,3],decreasing=TRUE),]
 colnames(CorTable) <- c("Prot. 1", "Prot. 2", "Corr")
 ## exclude the results between the same metabolites
 CorTable_2 <- CorTable[-c(which(CorTable[, 1] == CorTable[,2])),]
-datatable(CorTable_2, caption = "Pearson correlations between all proteins") %>%
+datatable(CorTable_2, caption = "Pearson correlations between all proteins") |>
 formatRound(columns = "Corr", digits = 4)
 ```
 
@@ -403,9 +399,9 @@ pheatmap(cormat2)
 
 ## Correlation network analysis
 
-To identify groups of highly corraleted metabolites, correlation network 
-analysis is performed. Weighted gene coexpression network analysis (WGCNA) 
-implemented in the WGCNA R package is used for determining groups (modules) of 
+To identify groups of highly corraleted metabolites, correlation network
+analysis is performed. Weighted gene coexpression network analysis (WGCNA)
+implemented in the WGCNA R package is used for determining groups (modules) of
 higlhy correlated metabolites
 [@langfelderWGCNAPackageWeighted2008][@langfelderFastFunctionsRobust2012].
 Modules are identified using unsupervised clustering Dynamic Branch Cut method
@@ -427,7 +423,7 @@ sft <- pickSoftThreshold(met_data[, metabolites], powerVector = powers,
                          networkType = "unsigned")
 ## https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/faq.html
 ## point 6: low connectivity; soft-thresholding power = 6
-adjacencyA1 <- adjacency(met_data[, metabolites], power = sft$powerEstimate, 
+adjacencyA1 <- adjacency(met_data[, metabolites], power = sft$powerEstimate,
                          type = "unsigned")
 diag(adjacencyA1) <- 0
 dissTOMA1 <- 1 - TOMsimilarity(adjacencyA1, TOMType = "unsigned")
@@ -442,7 +438,7 @@ plotDendroAndColors(biomTreeA1, mColorh, paste("dpSplt =", 3),
 ```
 
 If parameters are in the same and long branch, means that they are correlated.
-Because of large number of metabolites with a long names figure is not clear, 
+Because of large number of metabolites with a long names figure is not clear,
 thus tables are provided.
 Numbers of the metabolites associatet to each module are presented here:
 
@@ -454,8 +450,8 @@ orderedGV <- GroupVar[order(GroupVar[, 2]), ]
 sort(table(orderedGV[, 2]))
 ```
 
-We next create tables for all groups of correlated metabolites. Shown are the 
-analytical class and the mean correlation of the metabolite against all 
+We next create tables for all groups of correlated metabolites. Shown are the
+analytical class and the mean correlation of the metabolite against all
 metabolites within the cluster (including itself).
 
 ```{r, results = "asis"}
@@ -475,7 +471,7 @@ for (cluster in clusters) {
 ```
 
 Most of the clusters with highly correlated metabolites make biologically
-sense. 
+sense.
 
 In next table, identified correlated metabolites per module with correlation
 coefficients are presented:

@@ -39,7 +39,7 @@ dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 # Introduction
 
 In this document we perform an unsupervised *exploratory* data analysis of the
-Scanning SWATH proteomics data set of the NAFLD study to evaluate and identify 
+Scanning SWATH proteomics data set of the NAFLD study to evaluate and identify
 any relations between proteins and/or participants.
 
 # Data import
@@ -69,12 +69,10 @@ library(writexl)
 ```
 
 
-We next load the data the TDFF data module. 
+We next load the data the TDFF data module.
 
 ```{r, message = FALSE}
-##
-
-scan <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.1",
+scan <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.2",
                     path = ".")
 protSS_data <- data(scan)
 protSS_ann <- labels(scan)
@@ -87,7 +85,7 @@ protSS_data <- protSS_data[, proteins]
 ```
 
 Scaninng SWATH data is already log2 transformed!
-Before proceeding with the data analysis we restrict to samples from the NAFLD 
+Before proceeding with the data analysis we restrict to samples from the NAFLD
 study.
 
 ```{r keep-NAFLDs, message = FALSE, warning = FALSE}
@@ -96,8 +94,8 @@ protSS_data <- protSS_data[grep("^008", rownames(protSS_data)), ]
 
 # General data overview
 
-In this dataset `r ncol(protSS_data)` proteins measured from 
-`r nrow(protSS_data)` samples collected from the NAFLD study are evaluated. Note 
+In this dataset `r ncol(protSS_data)` proteins measured from
+`r nrow(protSS_data)` samples collected from the NAFLD study are evaluated. Note
 that all proteins are log2 transformed.
 
 Distributions of all 148 metabolites are visualized in histograms.
@@ -129,7 +127,7 @@ n_anns <- nafldTraitAnnotations()
 #' personal data
 n_perso <- nafldData("personal")
 rownames(n_perso) <- n_perso$AID
-##                                          
+##
 protSS_data$AID <- n_perso[rownames(protSS_data), "AID"]
 protSS_data$AID_CHRIS <- n_perso[rownames(protSS_data), "aid_chris"]
 protSS_data$Age <- n_perso[rownames(protSS_data), "na_ager"]
@@ -146,8 +144,7 @@ protSS_data$case <- tmp[rownames(protSS_data), "na_case"]
 ```
 
 The time span between the two studies is thus between 2 to 5 years. We next
-evaluate BMI and fat composition for the study participants, first split by
-gender and then by case/control definition.
+add additional anthropometric traits to the data.
 
 ```{r}
 #' BMI, fat etc.
@@ -159,7 +156,7 @@ protSS_data$body_fat <- n_anthro[rownames(protSS_data), "naan04"]
 protSS_data$visc_fat <- n_anthro[rownames(protSS_data), "naan05"]
 ```
 
-We next evaluate the clinical examinations performed on all participants.
+We next add the clinical examinations performed on all participants.
 
 ```{r}
 #' Clinical examinations
@@ -192,7 +189,7 @@ protSS_data$metsym <- tmp[rownames(protSS_data), "nascmets"]
 ```
 
 
-In next table, general overview for all metabolites are presented (mean, 
+In next table, general overview for all metabolites are presented (mean,
 standard deviation, coefficients of variation of QC samples):
 
 ```{r}
@@ -268,7 +265,7 @@ plot3d(scPCA.scores[,1], scPCA.scores[,2], scPCA.scores[,3], xlab=paste("PC 1(",
 rglwidget()
 ```
 
-There is overlap between males and females, but small trend can be observed in 
+There is overlap between males and females, but small trend can be observed in
 PC1 vs PC2!
 
 
@@ -291,9 +288,9 @@ Also here, there is moderate shift beetween 2 groups!
 
 In this section we aim to identify proteins with highly correlated (or anti
 correlated) concentrations to potentially get some more detailed insides into
-the dataset. For that, Pearson correlation coefficients between all proteins are 
-computed and visualized.  To detect groups with correlated proteins which might 
-belong from the same class, correlation network analysis is performed. 
+the dataset. For that, Pearson correlation coefficients between all proteins are
+computed and visualized.  To detect groups with correlated proteins which might
+belong from the same class, correlation network analysis is performed.
 
 
 ## Correlation analyses
@@ -302,7 +299,7 @@ Pearson's correlation coefficients between all proteins are computed, grouped
 and visualized:
 
 ```{r, corr-plot-features, fig.path = IMAGE_PATH, fig.width = 12, fig.height = 10}
-cormat <- cor(protSS_data[,proteins], method = "pearson", 
+cormat <- cor(protSS_data[,proteins], method = "pearson",
               use = "pairwise.complete.obs")
 reorder_cormat <- function(cormat){
     ## Use correlation between variables as distance
@@ -335,7 +332,7 @@ legend.direction = "horizontal") + coord_fixed()
 ggplotly(ggpHMap)
 ```
 
-There is a large number of proteins and figure is not very clear. Please zoom in 
+There is a large number of proteins and figure is not very clear. Please zoom in
 the part of figure which you want to analyse further.
 All correlation coefficients are summariezed in table and ordered according
 the Pearson correlation coefficients:
@@ -349,7 +346,7 @@ datatable(CorTable_2, caption = "Pearson correlations between all proteins") %>%
 formatRound(columns = "Corr", digits = 4)
 ```
 
-In addition we cluster the proteins based on their pairwise correlation 
+In addition we cluster the proteins based on their pairwise correlation
 coefficient.
 
 ```{r corr-heatmap-features, fig.path = IMAGE_PATH, fig.width = 16, fig.height = 14}
@@ -361,9 +358,9 @@ pheatmap(cormat2)
 
 ## Correlation network analysis
 
-To identify groups of highly corraleted proteins, correlation network analysis 
-is performed. Weighted gene coexpression network analysis (WGCNA) implemented in 
-the WGCNA R package is used for determining groups (modules) of higlhy 
+To identify groups of highly corraleted proteins, correlation network analysis
+is performed. Weighted gene coexpression network analysis (WGCNA) implemented in
+the WGCNA R package is used for determining groups (modules) of higlhy
 correlated proteins
 [@langfelderWGCNAPackageWeighted2008][@langfelderFastFunctionsRobust2012].
 Modules are identified using unsupervised clustering Dynamic Branch Cut method
@@ -385,7 +382,7 @@ sft <- pickSoftThreshold(protSS_data[,proteins], powerVector = powers,
                          networkType = "unsigned")
 ## https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/faq.html
 ## point 6: low connectivity; soft-thresholding power = 6
-adjacencyA1 <- adjacency(protSS_data[,proteins], power = 6, 
+adjacencyA1 <- adjacency(protSS_data[,proteins], power = 6,
                          type = "unsigned")
 diag(adjacencyA1) <- 0
 dissTOMA1 <- 1 - TOMsimilarity(adjacencyA1, TOMType = "unsigned")
@@ -400,7 +397,7 @@ plotDendroAndColors(biomTreeA1, mColorh, paste("dpSplt =", 3),
 ```
 
 If parameters are in the same and long branch, means that they are correlated.
-Because of large number of proteins with a long names figure is not clear, thus 
+Because of large number of proteins with a long names figure is not clear, thus
 tables are provided.
 Numbers of the proteins associatet to each module are presented here:
 
@@ -412,8 +409,8 @@ orderedGV <- GroupVar[order(GroupVar[, 2]), ]
 sort(table(orderedGV[, 2]))
 ```
 
-We next create tables for all groups of correlated proteins. Shown are the 
-long_description and the mean correlation of the protein against all proteins 
+We next create tables for all groups of correlated proteins. Shown are the
+long_description and the mean correlation of the protein against all proteins
 within the cluster (including itself).
 
 ```{r, results = "asis"}
@@ -433,7 +430,7 @@ for (cluster in clusters) {
 ```
 
 Most of the clusters with highly correlated proteins make biologically
-sense. 
+sense.
 
 In next table, identified correlated proteins per module with correlation
 coefficients are presented:
