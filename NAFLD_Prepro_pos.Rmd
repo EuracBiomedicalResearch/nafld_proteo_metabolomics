@@ -644,7 +644,11 @@ save(nafld, file = "nafld_after_refine")
 
 ## Retention time alignment
 
+Multiple strategies were tested in a separate Rmd file
+
 ```{r plot-before-alignment,  echo=FALSE}
+load("nafld_after_refine")
+
 pool_index <- sampleData(nafld)$sample_type == "Pool"
 pool_sample <- nafld[pool_index]
 
@@ -681,10 +685,13 @@ legend("topright", col = col_batch_id,
        xpd = TRUE,
        text.width = 7, bty = "n",
        legend = names(col_batch_id), lty = 1)
+
+#' keep a raw nafld object to compare before/after alignment 
+nafld_raw <- nafld
 ```
 
-```{r include=FALSE}
-#'reorganising samples order for alignment
+```{r}
+#'Reorganising samples order for alignment
 #' saving old order
 sampleData(nafld)$original_index <- seq_along(nafld)
 
@@ -702,10 +709,97 @@ index_qc <- unlist(tmp, use.names = FALSE)
 
 #' applying it
 nafld <- nafld[index_qc]
-#' triple checked, it worked perfectly
 ```
 
-```{r groupingpeaks}
+One run based on a pre-defined peak matrix of IS standard with rt for each Pool samples
+
+```{r}
+#' creating matrix for rt alignment 
+standard <- read.delim("Mix_alignment.txt")
+
+# prep
+fdef <- as.data.frame(chromPeaks(nafld))
+fdef$feature_id <- rownames(fdef)
+
+#' loop results
+ID_table <- matrix(
+    ncol = length(nafld), 
+    nrow = nrow(standard), 
+    dimnames = list(c(row.names(standard)), c(seq_len(length(nafld))))
+)
+
+#' Keep only matches with highest intensity 
+rem_dups <- function(x) {
+    if (nrow(matches(x)) > 1)
+        filterMatches(x, index = which.max(x$target_maxo))
+    else x
+}
+
+#' get ID for peaks matching with IS for each samples ( minus Blanks)
+for (i in unique(fdef$sample)){
+    tmp <- fdef[fdef[,"sample"]== i, ]
+    if(sampleData(nafld)$sample_type[i] != "Blank") {
+        match_intern_standard <- matchValues(
+        query = standard,
+        target = tmp,
+        mzColname = c("mz", "mz"),
+        rtColname = c("RT", "rt" ),
+        param = MzRtParam(ppm = 50, toleranceRt = 20))
+    match_intern_standard <- MetaboAnnotation::endoapply(match_intern_standard,
+                                                     FUN = rem_dups)
+    ID_table[,i] <- match_intern_standard$target_feature_id
+    } 
+}
+
+#Function to create rt dataframe
+rtdf <- function(nafld, ID_table) {
+    indices <- as.vector(ID_table)
+    fdef <- fdef <- as.data.frame(chromPeaks(nafld))
+    fdef$feature_id <- rownames(fdef)
+    x <- fdef[indices, "rt"]
+    dim(x) <- dim(ID_table)
+    rownames(x) <- rownames(ID_table)
+    colnames(x) <- colnames(ID_table)
+    x
+}
+
+#' run for nafld 
+RT_raw <- rtdf(nafld, ID_table)
+
+#' Subset for Pool samples
+index <- sampleData(nafld)$sample_type == "Pool"
+final_table <- RT_raw[, index]
+
+#' run with that first
+#' Define parameters of choice
+subset <- which(sampleData(nafld)$sample_type == "Pool")
+param <- PeakGroupsParam(minFraction = 0.9,
+                         span = 0.6, 
+                         peakGroupsMatrix = final_table,
+                         subset = subset, 
+                         subsetAdjust = "average")
+
+nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
+
+#' See result
+plotAdjustedRtime(nafld, col = col_sample)
+grid()
+legend("topright", col = col_phenotype,
+       legend = names(col_phenotype), lty = 1)
+
+plotAdjustedRtime(nafld, col = col_batches)
+grid()
+legend("topright", col = col_batch_id,
+       legend = names(col_batch_id), lty = 1)
+
+#' Replace the Rtime by the adjusted ones 
+nafld <- applyAdjustedRtime(nafld)
+```
+
+Second run this timebased on correspondence step on Pool samples. 
+
+```{r adjustRtime, message=FALSE, warning=FALSE}
+## second run
 # Grouping the peaks according to 
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type == "Pool",
@@ -714,22 +808,7 @@ param <- PeakDensityParam(
     bw = 2.5)
 
 nafld <- groupChromPeaks(nafld, param = param)
-```
 
-```{r eval=FALSE, include=FALSE}
-#'reorganising samples order for alignment
-#' saving old order
-sampleData(nafld)$original_index <- seq_along(nafld)
-
-#' determining new order
-index_qc <- 
-
-#' applying it
-nafld <- nafld[index_qc, keepFeatures = TRUE] #remove the keep feature thing ?
-```
-
-
-```{r adjustRtime, message=FALSE, warning=FALSE}
 #' Define parameters of choice
 subset <- which(sampleData(nafld)$sample_type == "Pool")
 
@@ -742,24 +821,51 @@ param <- PeakGroupsParam(minFraction = 0.9,
 #' Input in the function
 nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
 
-#' remove reordering 
-nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
-
 #' See result
 plotAdjustedRtime(nafld, col = col_sample)
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
+
+plotAdjustedRtime(nafld, col = col_batches)
+grid()
+legend("topright", col = col_batch_id,
+       legend = names(col_batch_id), lty = 1)
 ```
 
+```{r}
+#' get RT table after alignment 
+RT_aligned <- rtdf(nafld, ID_table)
 
-Once the sample is found can look into it specifically (no need for cluster)
+#' Get RT table only for study samples
+index_s <- sampleData(nafld)$sample_type == "Study"
+RT_raw <- RT_raw[, index_s]
+RT_aligned <- RT_aligned[, index_s]
+
+Sdsdf <- data.frame(
+    Raw = rowSds(RT_raw, na.rm = TRUE),
+    Aligned = rowSds(RT_aligned, na.rm = TRUE)
+)
+
+pandoc.table(Sdsdf, style = "rmarkdown")
+```
+
+```{r}
+boxplot(Sdsdf, outline = FALSE, ylab = "RT standard deviation")
+```
+
+Looks pretty cool
+
+```{r}
+ #' remove reordering 
+nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
+```
+
 
 ```{r bpc-before-and-after, echo=FALSE}
 pool_index <- sampleData(nafld)$sample_type == "Pool"
 pool_sample <- nafld[pool_index, keepAdjustedRtime = TRUE]
 batches_pool <- col_batch_id[sampleData(pool_sample)$batch_id]
-
 
 #' Plot the BPC before and after alignment
 par(mfrow = c(2,1), mar = c(2, 1, 1, 0.5))
@@ -781,6 +887,11 @@ chromatogram(pool_sample,
            horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
            text.width = 7, bty = "n", 
            legend = names(col_batch_id), lty = 1)
+    
+#' replace value to not have problems when indexing 
+
+nafld <- applyAdjustedRtime(nafld)
+pool_sample <- nafld[pool_index]
 ```
 
 ```{r}
