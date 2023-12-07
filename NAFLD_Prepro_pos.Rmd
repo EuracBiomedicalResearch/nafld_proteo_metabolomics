@@ -342,13 +342,7 @@ bps <- spectra(nafld) |>
 ```
 
 ```{r compare, echo=TRUE}
-system.time(
-    sim_matrix <- compareSpectra(bps) # check which faster
-)
-
-system.time(
-    sim_matrix <- compareSpectra(bps, bps)
-)
+sim_matrix <- compareSpectra(bps)
 ```
 
 ```{r heatmap_sim_matrix, fig.height=8, fig.width=7, include=FALSE}
