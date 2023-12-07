@@ -657,7 +657,7 @@ Multiple strategies were tested in a separate Rmd file
 ```{r plot-before-alignment,  echo=FALSE}
 load("nafld_after_refine")
 
-pool_index <- sampleData(nafld)$sample_type == "Pool"
+pool_index <- which(sampleData(nafld)$sample_type == "Pool")
 
 bpc_raw <- chromatogram(nafld[pool_index], aggregationFun = "max",
                         chromPeaks = "none")
@@ -694,12 +694,13 @@ legend("topright", col = col_batch_id,
        text.width = 7, bty = "n",
        legend = names(col_batch_id), lty = 1)
 
-#' keep a raw nafld object to compare before/after alignment
-nafld_raw <- nafld
 ```
 
 ```{r}
-#'Reorganising samples order for alignment
+#' keep a raw nafld object to compare before/after alignment
+nafld_raw <- nafld
+
+#' Reorganising samples order for alignment
 #' saving old order
 sampleData(nafld)$original_index <- seq_along(nafld)
 
@@ -717,6 +718,10 @@ index_qc <- unlist(tmp, use.names = FALSE)
 
 #' applying it
 nafld <- nafld[index_qc]
+
+#' redefine the index of the pool
+pool_index <- which(sampleData(nafld)$sample_type == "Pool")
+
 ```
 
 One run based on a pre-defined peak matrix of IS standard with rt for each Pool samples
@@ -725,16 +730,15 @@ One run based on a pre-defined peak matrix of IS standard with rt for each Pool 
 #' creating matrix for rt alignment
 standard <- read.delim("Mix_alignment.txt")
 
-# prep
-fdef <- as.data.frame(chromPeaks(nafld))
-fdef$feature_id <- rownames(fdef)
-
 #' loop results
 ID_table <- matrix(
     ncol = length(nafld),
     nrow = nrow(standard),
     dimnames = list(c(row.names(standard)), c(seq_len(length(nafld))))
 )
+
+cpks <- as.data.frame(chromPeaks(nafld))
+cpks$peak_id <- rownames(cpks)
 
 #' Keep only matches with highest intensity
 rem_dups <- function(x) {
@@ -744,27 +748,26 @@ rem_dups <- function(x) {
 }
 
 #' get ID for peaks matching with IS for each samples ( minus Blanks)
-for (i in unique(fdef$sample)){
-    tmp <- fdef[fdef[,"sample"]== i, ]
-    if(sampleData(nafld)$sample_type[i] != "Blank") {
-        match_intern_standard <- matchValues(
+for (i in which(sampleData(nafld)$sample_type != "Blank")) {
+    tmp <- cpks[cpks$sample == i, ]
+    match_intern_standard <- matchValues(
         query = standard,
         target = tmp,
         mzColname = c("mz", "mz"),
         rtColname = c("RT", "rt" ),
         param = MzRtParam(ppm = 50, toleranceRt = 20))
     match_intern_standard <- MetaboAnnotation::endoapply(match_intern_standard,
-                                                     FUN = rem_dups)
-    ID_table[,i] <- match_intern_standard$target_feature_id
-    }
+                                                         FUN = rem_dups)
+    ID_table[, i] <- match_intern_standard$target_peak_id
 }
 
-#Function to create rt dataframe
+#' Function to create rt dataframe;
+#' avoiding subset with NA turns out to be much more efficient
 rtdf <- function(nafld, ID_table) {
-    indices <- as.vector(ID_table)
-    fdef <- fdef <- as.data.frame(chromPeaks(nafld))
-    fdef$feature_id <- rownames(fdef)
-    x <- fdef[indices, "rt"]
+    index <- as.vector(ID_table)
+    nna <- !is.na(index)
+    x <- rep(NA, length(index))
+    x[nna] <- chromPeaks(nafld)[index[nna], "rt"]
     dim(x) <- dim(ID_table)
     rownames(x) <- rownames(ID_table)
     colnames(x) <- colnames(ID_table)
@@ -775,27 +778,24 @@ rtdf <- function(nafld, ID_table) {
 RT_raw <- rtdf(nafld, ID_table)
 
 #' Subset for Pool samples
-index <- sampleData(nafld)$sample_type == "Pool"
 final_table <- RT_raw[, index]
 
 #' run with that first
 #' Define parameters of choice
-subset <- which(sampleData(nafld)$sample_type == "Pool")
 param <- PeakGroupsParam(minFraction = 0.9,
                          span = 0.6,
                          peakGroupsMatrix = final_table,
-                         subset = subset,
+                         subset = pool_index,
                          subsetAdjust = "average")
-
 nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
 
 #' See result
-plotAdjustedRtime(nafld, col = col_sample)
+plotAdjustedRtime(nafld, col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 
-plotAdjustedRtime(nafld, col = col_batches)
+plotAdjustedRtime(nafld, col = paste0(col_batches, 80))
 grid()
 legend("topright", col = col_batch_id,
        legend = names(col_batch_id), lty = 1)
@@ -804,11 +804,39 @@ legend("topright", col = col_batch_id,
 nafld <- applyAdjustedRtime(nafld)
 ```
 
-Second run this timebased on correspondence step on Pool samples.
+```{r}
+#' Plot EICs for the mix standards.
+eics_s <- chromatogram(nafld[pool_index],
+                       mz = as.matrix(standard[, c("mzmin", "mzmax")]),
+                       rt = as.matrix(standard[, c("rtmin", "rtmax")]))
+
+dr <- "EIC_standard/Pool_batch/after_first_alignment/"
+dir.create(dr, recursive = TRUE, showWarnings = FALSE)
+
+for (i in seq_len(nrow(standard))) {
+    png(paste0(dr, "EIC_", standard$abbreviation[i], ".png"),
+        width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
+    eic <- eics_s[i, ]
+    plot(eic, main = standard$name[i],
+         col = paste0(batches_pool, 80),
+         peakCol = paste0(batches_pool[chromPeaks(eic)[, "sample"]], 80),
+         peakBg = paste0(batches_pool[chromPeaks(eic)[, "sample"]], 40))
+    grid()
+    legend("topright",
+           col = col_batch_id,
+           legend = names(col_batch_id),
+           lty = 1)
+    abline(v = standard$RT[i], col = "red", lty = 3)
+    dev.off()
+}
+
+```
+
+Second run this time based on correspondence step on Pool samples.
 
 ```{r adjustRtime, message=FALSE, warning=FALSE}
-## second run
-# Grouping the peaks according to
+#' second run
+#' correspondence
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type == "Pool",
     minFraction = 0.9,
@@ -817,89 +845,116 @@ param <- PeakDensityParam(
 
 nafld <- groupChromPeaks(nafld, param = param)
 
-#' Define parameters of choice
-subset <- which(sampleData(nafld)$sample_type == "Pool")
-
 param <- PeakGroupsParam(minFraction = 0.9,
                          extraPeaks = 50,
                          span = 0.3,
                          subsetAdjust = "average",
-                         subset = subset)
+                         subset = pool_index)
 
 #' Input in the function
 nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
 
 #' See result
-plotAdjustedRtime(nafld, col = col_sample)
+plotAdjustedRtime(nafld, col = paste0(col_sample, 80))
 grid()
 legend("topright", col = col_phenotype,
        legend = names(col_phenotype), lty = 1)
 
-plotAdjustedRtime(nafld, col = col_batches)
+plotAdjustedRtime(nafld, col = paste0(col_batches, 80))
 grid()
 legend("topright", col = col_batch_id,
        legend = names(col_batch_id), lty = 1)
 ```
 
 ```{r}
+#' Plot EICs for the mix standards.
+eics_s <- chromatogram(nafld[pool_index],
+                       mz = as.matrix(standard[, c("mzmin", "mzmax")]),
+                       rt = as.matrix(standard[, c("rtmin", "rtmax")]))
+
+dr <- "EIC_standard/Pool_batch/after_second_alignment/"
+dir.create(dr, recursive = TRUE, showWarnings = FALSE)
+
+for (i in seq_len(nrow(standard))) {
+    png(paste0(dr, "EIC_", standard$abbreviation[i], ".png"),
+        width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
+    eic <- eics_s[i, ]
+    plot(eic, main = standard$name[i],
+         col = paste0(batches_pool, 80),
+         peakCol = paste0(batches_pool[chromPeaks(eic)[, "sample"]], 80),
+         peakBg = paste0(batches_pool[chromPeaks(eic)[, "sample"]], 40))
+    grid()
+    legend("topright",
+           col = col_batch_id,
+           legend = names(col_batch_id),
+           lty = 1)
+    abline(v = standard$RT[i], col = "red", lty = 3)
+    dev.off()
+}
+
+```
+
+```{r, results = "asis"}
 #' get RT table after alignment
 RT_aligned <- rtdf(nafld, ID_table)
 
 #' Get RT table only for study samples
 index_s <- sampleData(nafld)$sample_type == "Study"
-RT_raw <- RT_raw[, index_s]
-RT_aligned <- RT_aligned[, index_s]
 
 Sdsdf <- data.frame(
-    Raw = rowSds(RT_raw, na.rm = TRUE),
-    Aligned = rowSds(RT_aligned, na.rm = TRUE)
+    Raw_pool = rowSds(RT_raw[, pool_index], na.rm = TRUE),
+    Aligned_pool = rowSds(RT_aligned[, pool_index], na.rm = TRUE),
+    Raw_study = rowSds(RT_raw[, index_s], na.rm = TRUE),
+    Aligned_study = rowSds(RT_aligned[, index_s], na.rm = TRUE)
 )
 
-pandoc.table(Sdsdf, style = "rmarkdown")
+pandoc.table(Sdsdf, style = "rmarkdown", split.table = Inf)
 ```
 
 ```{r}
-boxplot(Sdsdf, outline = FALSE, ylab = "RT standard deviation")
+par(mfrow = c(13, 4.5, 1, 0.5))
+library(vioplot)
+vioplot(Sdsdf, las = 2, ylab = "RT standard deviation")
+grid()
 ```
 
 Looks pretty cool
 
 ```{r}
 #' remove reordering
-nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
+nafld <- nafld[order(sampleData(nafld)$original_index),
+               keepFeatures = TRUE,
+               keepAdjustedRtime = TRUE]
 ```
 
-
 ```{r bpc-before-and-after, echo=FALSE}
-pool_index <- sampleData(nafld)$sample_type == "Pool"
+#' replace value to not have problems when indexing
+nafld <- applyAdjustedRtime(nafld)
+pool_index <- which(sampleData(nafld)$sample_type == "Pool")
 pool_sample <- nafld[pool_index, keepAdjustedRtime = TRUE]
 batches_pool <- col_batch_id[sampleData(pool_sample)$batch_id]
 
 #' Plot the BPC before and after alignment
-par(mfrow = c(2,1), mar = c(2, 1, 1, 0.5))
-pool_sample_raw <- dropAdjustedRtime(pool_sample)
+par(mfrow = c(2, 1), mar = c(2, 1, 1, 0.5))
+pool_sample_raw <- nafld_raw[pool_index]
 chromatogram(pool_sample_raw,
              aggregationFun = "max",
              chromPeaks = "none") |>
     plot(main = "BPC of pool before alignment",
          col = batches_pool, lwd = 0.8)
-    grid()
+grid()
 
 chromatogram(pool_sample,
              aggregationFun = "max",
              chromPeaks = "none") |>
     plot(main = "BPC of pool after alignment",
          col = batches_pool, lwd = 0.8)
-    grid()
-    legend("topright", col = col_batch_id, cex = 0.50,
-           horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
-           text.width = 7, bty = "n",
-           legend = names(col_batch_id), lty = 1)
+grid()
+legend("topright", col = col_batch_id, cex = 0.50,
+       horiz = TRUE,inset = c(-0.18, -0.1), xpd = TRUE,
+       text.width = 7, bty = "n",
+       legend = names(col_batch_id), lty = 1)
 
-#' replace value to not have problems when indexing
-
-nafld <- applyAdjustedRtime(nafld)
-pool_sample <- nafld[pool_index]
 ```
 
 ```{r}
