@@ -129,7 +129,7 @@ No sample with below average number of spectra
 nafld <- filterRt(nafld, c(10, 250))
 ```
 
-```{r plot again, include=FALSE}
+```{r plot again, echo=FALSE}
 #' Plot again
 chromatogram(nafld, aggregationFun = "max", chunkSize = 6) |>
     plot(col = col_sample, main = "BPC after filtering", lwd = 0.8)
@@ -467,12 +467,14 @@ legend("topright", col = col_phenotype, cex = 0.50,
 
 In my opinion looks pretty good, should apply to all data:
 
-```{r findchrompkeaks all data, echo=TRUE}
-nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
-
-save(nafld, file = "after_peakdetect")
+```{r load-chromPeaks, include=FALSE, eval= file.exists("after_peakdetect")}
+load("after_peakdetect")
 ```
 
+```{r findchrompkeaks all data, echo=TRUE, eval = !file.exists("after_peakdetect")}
+nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
+save(nafld, file = "after_peakdetect")
+```
 
 ```{r echo=TRUE}
 #' test for ions of interest
@@ -564,16 +566,7 @@ grid()
 - 3 study samples with very low numbers of detected peaks (even less than in
   blanks) -> failed injection or no sample available.
 
-```{r}
-save(nafld, file= "after_peakdetect")
-```
-
 ### Refine chromatographic peaks
-
-```{r eval=FALSE, include=FALSE}
-load("after_peakdetect")
-```
-
 
 ```{r merging}
 #' set up the parameter
@@ -582,11 +575,14 @@ param <- MergeNeighboringPeaksParam(expandRt = 5,
                                     minProp = 0.75)
 ```
 
-```{r refine dataset,  message=TRUE}
+```{r load-refine, include=FALSE, eval= file.exists("nafld_after_refine")}
+load("nafld_after_refine")
+```
+
+```{r refine dataset,  message=TRUE, eval = !file.exists("nafld_after_refine")}
 #' apply to all dataset
 nafld <- refineChromPeaks(nafld, param = param, chunkSize = 10)
 save(nafld, file = "nafld_after_refine")
-
 ```
 
 ```{r echo=TRUE, fig.cap = "Numbers of detected peaks per sample after peak refinement."}
@@ -596,7 +592,6 @@ chromPeaks(nafld)[, "sample"] |>
     barplot(border = col_sample, col = col_sample)
 grid()
 ```
-
 
 ```{r}
 #' All EICs in pool
@@ -646,18 +641,11 @@ for (i in seq_len(nrow(standard))) {
 }
 ```
 
-
-```{r include=FALSE}
-save(nafld, file = "nafld_after_refine")
-```
-
 ## Retention time alignment
 
 Multiple strategies were tested in a separate Rmd file
 
 ```{r plot-before-alignment,  echo=FALSE}
-load("nafld_after_refine")
-
 pool_index <- which(sampleData(nafld)$sample_type == "Pool")
 
 bpc_raw <- chromatogram(nafld[pool_index], aggregationFun = "max",
@@ -722,10 +710,10 @@ nafld <- nafld[index_qc]
 
 #' redefine the index of the pool
 pool_index <- which(sampleData(nafld)$sample_type == "Pool")
-
 ```
 
-One run based on a pre-defined peak matrix of IS standard with rt for each Pool samples
+One run based on a pre-defined peak matrix of IS standard with rt for each
+Pool samples
 
 ```{r}
 #' creating matrix for rt alignment
@@ -748,7 +736,7 @@ rem_dups <- function(x) {
     else x
 }
 
-#' get ID for peaks matching with IS for each samples ( minus Blanks)
+#' get ID for peaks matching with IS for each samples (minus Blanks)
 for (i in which(sampleData(nafld)$sample_type != "Blank")) {
     tmp <- cpks[cpks$sample == i, ]
     match_intern_standard <- matchValues(
@@ -830,7 +818,6 @@ for (i in seq_len(nrow(standard))) {
     abline(v = standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
-
 ```
 
 Second run this time based on correspondence step on Pool samples.
@@ -892,7 +879,6 @@ for (i in seq_len(nrow(standard))) {
     abline(v = standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
-
 ```
 
 ```{r, results = "asis"}
@@ -1074,11 +1060,11 @@ save(nafld, file = "nafld_after_Alignment")
 
 ## Correspondence
 
-prob need to check for binwidth
 ```{r first plots test}
 #'Updating parameters
-param <- PeakDensityParam(sampleGroups = sampleData(nafld)$sample_type[pool_index],
-                        minFraction = 0.75, binSize = 0.015, bw = 2)
+param <- PeakDensityParam(
+    sampleGroups = sampleData(nafld)$sample_type[pool_index],
+    minFraction = 0.75, binSize = 0.015, bw = 2)
 
 
 plotChromPeakDensity(
@@ -1117,7 +1103,6 @@ nafld <- groupChromPeaks(nafld, param = param)
 pool_index <- sampleData(nafld)$sample_type == "Pool"
 pool_sample <- nafld[pool_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
 ```
-
 
 ```{r}
 #' Extract chromatogram with signal for isomers 1-Methylhistidine and
@@ -1158,9 +1143,11 @@ nafld <- fillChromPeaks(nafld, param = ChromPeakAreaParam(), chunkSize = 10)
 sum(is.na(featureValues(nafld)))
 ```
 
-With `fillChromPeaks` we could thus rescue signal for all but `r sum(is.na(featureValues(nafld)))` features.
+With `fillChromPeaks` we could thus rescue signal for all but `r sum(is.na(featureValues(nafld)))`
+features.
 
-Another way to confirm gap-filling rescued signals. use QC sample signals as basis
+Another way to confirm gap-filling rescued signals.
+use QC sample signals as basis
 
 ```{r Detected vs filled signal}
 #' Get only detected signal
@@ -1192,8 +1179,9 @@ grid()
 abline(0, 1)
 ```
 
+Then calculate statistics on these values. below we fit a linear regression
+line to the data and summarize its results
 
-Then calculate statistics on these values. below we fit a linear regression line to the data and summarize its results
 ```{r}
 #' fit a linear regression line to the data
 l <- lm(log2(avg_filled) ~ log2(avg_detect))
@@ -1205,42 +1193,43 @@ save(nafld, file = "nafld_after_GF")
 ```
 
 ## Removing features detected in blank
+
 ```{r}
 blank_index <- sampleData(nafld)$sample_type == "Blank"
-blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
+blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
+                      keepFeatures = TRUE]
 
 #' index of features that are detected in blank samples
 idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
 
 #' get something like the average intensity for each feature in blank samples
 
-#' also group the intensity for
-
-#
+#' also group the intensity for...
 ```
 
 # Next steps
 
 separate blanks from others
+
 ```{r}
 blank_index <- sampleData(nafld)$sample_type == "Blank"
-blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
-nafld <- nafld[!blank_index, keepAdjustedRtime = TRUE, keepFeatures = TRUE]
+blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
+                      keepFeatures = TRUE]
+
+nafld <- nafld[!blank_index, keepAdjustedRtime = TRUE,
+               keepFeatures = TRUE]
 
 save(blank_sample, file = "blank_nafld.RData")
 save(nafld, file = "samples_nafld.RData")
 ```
 
-
 Summarized experiment
+
 ```{r}
 #' Extract results as a SummarizedExperiment
 res <- quantify(nafld, method = "sum", filled = FALSE)
-assays(res)$raw_filled <- featureValues(nafld, method = "sum",
-filled = TRUE )
-
+assays(res)$raw_filled <- featureValues(nafld, method = "sum", filled = TRUE)
 res
-
 save(res, file = "SumExp_NAFLD.RData")
 
 # also for blanks
@@ -1249,3 +1238,4 @@ assays(res_blank)$raw_filled <- featureValues(blank_sample, method = "sum",
 filled = TRUE )
 save(res_blank, file = "SumExp_NAFLD_blank.RData")
 ```
+
