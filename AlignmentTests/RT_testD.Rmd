@@ -134,6 +134,8 @@ legend("topright", col = col_batch_id,
 
 nafld <- applyAdjustedRtime(nafld)
 
+nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
+
 save(nafld, file= "strategyD")
 ```
 

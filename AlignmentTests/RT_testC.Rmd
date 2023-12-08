@@ -159,7 +159,7 @@ param <- PeakGroupsParam(minFraction = 0.9,
 nafld <- adjustRtime(nafld, param = param, chunkSize = 10L)
 
  #' remove reordering 
-#nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
+nafld <- nafld[order(sampleData(nafld)$original_index), keepFeatures = TRUE, keepAdjustedRtime = TRUE]
 
 #' See result
 plotAdjustedRtime(nafld, col = col_sample)

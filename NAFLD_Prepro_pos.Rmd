@@ -44,6 +44,7 @@ library(MetaboCoreUtils)
 library(pheatmap)
 library(MsBackendSql)
 library(SummarizedExperiment)
+library(MetaboAnnotation)
 ```
 
 # Data import
