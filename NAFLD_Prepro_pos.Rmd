@@ -1026,7 +1026,7 @@ save(nafld, file = "nafld_after_Alignment")
 #'Updating parameters
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type[pool_index],
-    minFraction = 0.75, binSize = 0.015, bw = 2)
+    minFraction = 0.75, binSize = 0.015, bw = 1.8)
 
 
 plotChromPeakDensity(
