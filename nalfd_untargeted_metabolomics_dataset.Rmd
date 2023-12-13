@@ -1,0 +1,171 @@
+# Compile the NAFLD untargeted metabolomics data set
+
+```{r, echo = FALSE}
+library(BiocStyle)
+```
+
+This document describes how the untargeted data set for the NAFLD project is
+compiled and how it can be used. We will store the full MS data into a SQLite
+database which can be accessed and used with the `r Biocpkg("MsBackendSql")`
+package.
+
+We first load the information on the raw data files generated from each study
+participant.
+
+```{r}
+library(readxl)
+library(Spectra)
+library(MsBackendSql)
+
+pd <- as.data.frame(read_xlsx("data/nafld_hilic_files.xlsx"))
+pd$time_stamp <- as.character(pd$time_stamp)
+```
+
+## Store MS data into a SQL database
+
+Next we store the MS data into a RSQLite database.
+
+```{r}
+fls <- file.path("data", pd$mzML_file)
+
+library(RSQLite)
+con <- dbConnect(SQLite(), dbname = "data/NAFLD_untargeted.sqlite")
+
+system.time(
+    createMsBackendSqlDatabase(con, fls, MsBackendMzR(), chunksize = 10)
+)
+dbDisconnect(con)
+```
+
+Add sample annotations to the database.
+
+```{r}
+sps <- Spectra("data/NAFLD_untargeted.sqlite", source = MsBackendOfflineSql(),
+               drv = SQLite())
+sps$file <- basename(dataOrigin(sps))
+writeSampleData(sps, pd, colname = "file_name", spectraVariable = "file")
+```
+
+Check that it worked.
+
+```{r}
+con <- dbconn(sps@backend)
+dbListTables(con)
+dbGetQuery(con, "select * from sample_data limit 4")
+dbGetQuery(con, "select * from sample_to_msms_spectrum limit 4")
+```
+
+## Create a `MsExperiment` representing the data
+
+
+```{r}
+library(MsExperiment)
+library(RSQLite)
+library(readxl)
+pd <- as.data.frame(read_xlsx("data/nafld_hilic_files.xlsx"))
+pd$time_stamp <- as.character(pd$time_stamp)
+
+#' NEW way using the readMsExperiment with the backend.
+nafld_1 <- readMsExperiment(
+    spectraBackend = MsBackendOfflineSql(),
+    sampleData = pd, spectraFiles = pd$file_name,
+    drv = SQLite(), dbname = "data/NAFLD_untargeted.sqlite")
+
+#' Read all in one; requires we have samples in the database
+nafld_2 <- readMsExperiment(
+    spectraBackend = MsBackendOfflineSql(), drv = SQLite(),
+    dbname = "data/NAFLD_untargeted.sqlite")
+
+
+#' OLD way
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+#' Create MsExperiment and fill with data
+nafld <- MsExperiment()
+sampleData(nafld) <- DataFrame(pd)
+
+sps$file <- basename(dataOrigin(sps))
+spectra(nafld) <- sps
+
+#' Link spectra to samples
+nafld <- linkSampleData(nafld, with = "sampleData.file_name = spectra.file")
+
+```
+
+Compare that data is the same.
+
+```{r}
+library(testthat)
+#' sampleData
+expect_equal(sampleData(nafld_1), sampleData(nafld))
+expect_equal(sampleData(nafld_2)[, colnames(sampleData(nafld))],
+             sampleData(nafld))
+#' mapping
+expect_equal(nafld_1@sampleDataLinks[["spectra"]],
+             nafld@sampleDataLinks[["spectra"]])
+expect_equal(nafld_2@sampleDataLinks[["spectra"]],
+             nafld@sampleDataLinks[["spectra"]])
+#' Spectra
+a <- spectraData(spectra(nafld))
+b <- spectraData(spectra(nafld_1))
+d <- spectraData(spectra(nafld_2))
+cols <- intersect(colnames(a), colnames(b))
+
+expect_equal(a[, cols], b[, cols])
+expect_equal(a[, cols], d[, cols])
+
+a <- peaksData(spectra(nafld[1:10]))
+b <- peaksData(spectra(nafld_1[1:10]))
+d <- peaksData(spectra(nafld_2[1:10]))
+expect_equal(a, b)
+expect_equal(a, d)
+```
+
+Subset to data from a specific polarity.
+
+```{r}
+nafld_pos <- nafld[sampleData(nafld)$polarity == "POS"]
+nafld_neg <- nafld[sampleData(nafld)$polarity == "NEG"]
+```
+
+# Add sample link in SQL database
+
+```{r}
+#' Install Johannes branch method - change this once it's merged and published
+#' remotes::install_github("RforMassSpectrometry/MsExperiment", ref = "jomain")
+
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+sps$file_name <- basename(dataOrigin(sps))
+pd <- as.data.frame(read_xlsx("data/nafld_hilic_files.xlsx"))
+
+#' Create MsExperiment and fill with data
+nafld <- MsExperiment()
+sampleData(nafld) <- DataFrame(pd)
+spectra(nafld) <- sps
+
+nafld <- linkSampleData(nafld, with = "sampleData.file_name = spectra.file_name")
+
+#' Write sample data to the database
+dbWriteSampleData(nafld)
+```
+
+
+To load after that
+
+```{r}
+#' Load the spectra data from the database
+sps <- Spectra("data/NAFLD_untargeted.sqlite", drv = SQLite(),
+               source = MsBackendOfflineSql())
+
+nafld <- MsExperiment(spectra = sps)
+nafld
+```
+
+# Session information
+
+```{r}
+sessionInfo()
+```
