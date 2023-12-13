@@ -479,9 +479,7 @@ nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
 
 #' remove samples that have overall low intensity/peak detected
 index <- which(table(chromPeaks(nafld)[, "sample"]) < 1500)
-#' check phenotype
 sampleData(nafld)$sample_type[index]
-#' remove from dataset
 nafld <- nafld[-index]
 
 save(nafld, file = "after_peakdetect")
