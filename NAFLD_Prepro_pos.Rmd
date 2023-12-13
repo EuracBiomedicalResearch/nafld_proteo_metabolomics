@@ -476,6 +476,14 @@ load("after_peakdetect")
 
 ```{r findchrompkeaks all data, echo=TRUE, eval = !file.exists("after_peakdetect")}
 nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
+
+#' remove samples that have overall low intensity/peak detected
+index <- which(table(chromPeaks(nafld)[, "sample"]) < 1500)
+#' check phenotype
+sampleData(nafld)$sample_type[index]
+#' remove from dataset
+nafld <- nafld[-index]
+
 save(nafld, file = "after_peakdetect")
 ```
 
@@ -1157,16 +1165,22 @@ save(nafld, file = "nafld_after_GF")
 ## Removing features detected in blank
 
 ```{r}
+load("nafld_after_GF")
+
 blank_index <- sampleData(nafld)$sample_type == "Blank"
-blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
-                      keepFeatures = TRUE]
+sample_index <- sampleData(nafld)$sample_type != "Blank"
+fts <- featureValues(nafld)
+cont_vec <- vector(length = length(featureDefinitions(nafld)))
 
-#' index of features that are detected in blank samples
-idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
+for (i in seq_len(nrow(fts))) { 
+    cont_vec[i] <- mean(fts[i, blank_index], na.rm = TRUE) > 0.5 * mean(fts[i, sample_index], na.rm = TRUE)
+    }
 
-#' get something like the average intensity for each feature in blank samples
+sum(cont_vec, na.rm = TRUE)
+#' flagged features 
 
-#' also group the intensity for...
+#' add column "possible_cont" to the feature definitions table
+featureDefinitions(nafld)$possible_cont <- cont_vec
 ```
 
 # Next steps
@@ -1174,10 +1188,8 @@ idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
 separate blanks from others
 
 ```{r}
-blank_index <- sampleData(nafld)$sample_type == "Blank"
 blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
                       keepFeatures = TRUE]
-
 nafld <- nafld[!blank_index, keepAdjustedRtime = TRUE,
                keepFeatures = TRUE]
 
