@@ -137,7 +137,7 @@ n_data$fib4 <- tmp[n_data$AID, "nascfib4"]
 n_data$metsym <- tmp[n_data$AID, "nascmets"]
 ```
 
-From the `r nrow(n_data)` participants, 
+From the `r nrow(n_data)` participants,
 `r sum(n_data$liver_stiffness_iqr >= 30, na.rm = TRUE)`
 have a liver stiffness IQR `>= 30`.
 
@@ -279,19 +279,195 @@ While no cases of metabolic syndrome seem to be balanced between male and female
 participants and seem to be independent of the participants' ages, a strong
 difference can be seen for cases and controls as well as for BMI.
 
-```{r}
-#' Drug usage. only categorical.
+
+# Classifying NAFLD/MASLD and diabetes
+
+## Type 2 Diabetes
+
+Type 2 Diabetes (T2B) is diagnosed for study participants using the information
+and data from the study according to [@american_diabetes_association_2_2018]
+[@resl_guidelines_2023]. The criteria are:
+
+- HbA1C >= 6.5%
+- OR Fasting glucose >= 126 mg/dl
+- OR Anti-diabetic medication
+
+We are loading in addition CHRIS baseline data to enable comparison of these
+values in the baseline and the NAFLD study collection.
+
+```{r, message = FALSE}
+library(chrisData)
+chris_med <- chrisData("drugs_summary")
+rownames(chris_med) <- chris_med$AID
+chris_med <- chris_med[n_data$aid_chris, ]
+
+chris_int <- chrisData("interview")
+rownames(chris_int) <- chris_int$AID
+chris_int <- chris_int[n_data$aid_chris, ]
+
+chris_lab <- chrisData("labdata")
+rownames(chris_lab) <- chris_lab$AID
+chris_lab <- chris_lab[n_data$aid_chris, ]
+
+n_data$chris_dm <- chris_int$x0dm00 # self-reported diabetes diagnosis
+n_data$chris_HbA1c <- chris_lab$x0lp06a # Glycated Hemoglobin
+n_data$chris_glucose <- chris_lab$x0lp05 # fasting glucose
+n_data$chris_dia_med <- chris_med$x0dd21 # diabetes medication
 ```
 
-What still needs to be done:
+We next extract the same data from the NAFLD collection. We also update the
+self-reported diabetes diagnosis considering all participants that reported
+diabetes at baseline OR at NAFLD follow-up.
 
-- Diabetes diagnosis (using the definition from the shared document).
+```{r}
+med <- nafldData("Drug")
+rownames(med) <- med$AID
+med <- med[n_data$AID, ]
+
+int <- nafldData("interview")
+rownames(int) <- int$AID
+int <- int[n_data$AID, ]
+
+lab <- nafldData("Labdata")
+rownames(lab) <- lab$AID
+lab <- lab[n_data$AID, ]
+
+#' self-reported diabetes considering also baseline
+n_data$self_dm <- n_data$chris_dm
+n_data$self_dm[which(int$nadm00 == "Yes")] <- "Yes"
+n_data$HbA1c <- lab$nalp06a
+n_data$glucose <- lab$nalp05
+n_data$dia_med <- med$nadd21
+```
+
+And we are next diagnosing the NAFLD study participants based on the clinical
+and medication information (ignoring the self-reported diagnosis).
+
+```{r}
+#' Diagnosing in NAFLD
+t2d <- rep(FALSE, nrow(n_data))
+
+#' Anti-diabetic medication: nadd21
+t2d[which(n_data$dia_med == "Yes")] <- TRUE
+
+#' Glycated hemoglobin %: nalp06a
+t2d[which(n_data$HbA1c >= 6.5)] <- TRUE
+
+#' fasting glucose: nalp05
+t2d[which(n_data$glucose >= 126)] <- TRUE
+
+#' finally define those without clear information.
+no_lab <- is.na(n_data$HbA1c)
+t2d[is.na(n_data$dia_med) & no_lab] <- NA
+
+n_data$t2d <- t2d
+
+#' Diagnosing in CHRIS
+t2d <- rep(FALSE, nrow(n_data))
+
+#' Anti-diabetic medication: nadd21
+t2d[which(n_data$chris_dia_med == "Yes")] <- TRUE
+
+#' Glycated hemoglobin %: nalp06a
+t2d[which(n_data$chris_HbA1c >= 6.5)] <- TRUE
+
+#' fasting glucose: nalp05
+t2d[which(n_data$chris_glucose >= 126)] <- TRUE
+
+n_data$chris_t2d <- t2d
+```
+
+Note that for two participants no glycated hemoglobin measurement was
+available: one of them was (in CHRIS baseline) diabetic and one was selected as
+control (i.e., not diabetic). According to the available medication information
+in the NAFLD substudy these two participants were still diagnosed the same
+(i.e. one as diabetic and one not).
+
+```{r, results = "asis"}
+tmp <- data.frame(
+    count = as.integer(table(n_data$t2d)),
+    females = vapply(split(n_data$na_sex, n_data$t2d),
+                     function(x) sum(x == "Female"), integer(1)),
+    age = vapply(split(n_data$na_ager, n_data$t2d), mean, numeric(1)),
+    BMI = vapply(split(n_data$BMI, n_data$t2d), mean, numeric(1), na.rm = TRUE)
+)
+library(pander)
+pandoc.table(
+    tmp, style = "rmarkdown",
+    caption = "Overview of participants with and without type 2 diabetes.")
+
+```
+
+The number of diagnosed T2D is higher then the self-reported diagnosis
+(considering baseline and NAFLD). Below we evaluate the data for participants
+for which the diagnosis (either based on clinical parameters here or
+self-reported in the baseline or follow-up) does not agree.
+
+```{r}
+tmp <- cbind(n_data$chris_dm == "Yes",
+             n_data$self_dm == "Yes",
+             n_data$chris_t2d,
+             n_data$t2d)
+ambi <- !rowSums(tmp) %in% c(0, 4)
+
+tmp <- n_data[ambi, ]
+tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
+        "chris_glucose", "glucose")] |>
+    pandoc.table(style = "rmarkdown", split.table = Inf)
+```
+
+- [ ] TODO: discuss this. Which diagnosis to consider or use?
+- [ ] TODO: who defined "diabetes related medication"? Better to use ATC codes
+      instead?
+- Note: more participants in baseline diagnosed with T2D, maybe influence of
+  non-fasting?
+- [ ] TODO: consider fasting for the glucose measurement (only TRUE if glucose
+      higher and self-reported fasting).
+
+
+We next evaluate distribution of age, BMI, sex etc for participants with and
+without T2D.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without T2D."}
+f <- paste0(n_data$na_sex, n_data$t2d)
+vioplot(split(n_data$na_ager, f), main = "Age/T2D", ylab = "age [years]")
+grid()
+```
+
+Age distribution is similar for female or male study participants with or
+without T2D. We next evaluate the distribution of BMI values for T2D and control
+(again stratified by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without T2D."}
+vioplot(split(n_data$BMI, f), main = "BMI/T2D", ylab = "BMI")
+grid()
+```
+
+Participants with T2D have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without T2D."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/T2D",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with T2D have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+
+- visc fat
+- fib4
+
 
 
 # NAFLD omics data overview
 
-Get the IDs of NAFLD participants and their respective CHRIS AID.
 
+Get the IDs of NAFLD participants and their respective CHRIS AID.
 
 ```{r, message = FALSE}
 library(chrisData)
@@ -349,4 +525,241 @@ do <- read.table(system.file("txt", "drop-outs.txt", package = "chrisData"),
                  sep = "\t", header = TRUE, colClasses = "character")
 any(do$aid %in% nafld$AID)
 any(do$aid %in% nafld$aid_nafld)
+```
+
+
+## Metabolomics data
+
+We next evaluate metabolite concentrations in baseline and NAFLD. We first
+calculate correlations for metabolites (for each metabolite correlating
+measurements in baseline to those from NAFLD).
+
+```{r}
+p180_data <- data(p180)
+p180_labels <- labels(p180)
+metabolites <- p180_labels$description
+metabolites <- metabolites[-grep("assay flags", metabolites)]
+colnames(p180_data) <- p180_labels$description
+
+a <- as.matrix(p180_data[n_data$aid_chris, metabolites])
+b <- as.matrix(p180_data[n_data$AID, metabolites])
+
+cors <- vapply(seq_len(ncol(a)), function(i) {
+    cor(a[, i], b[, i], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+```
+
+The table below lists the correlation coefficients (between values from baseline
+and NAFLD) for all metabolites. Metabolites are ordered by magnitude of the
+correlation coefficient.
+
+```{r}
+tmp <- data.frame(p180_labels[match(metabolites, p180_labels$description),
+                              c("analyte_name", "analyte_class")],
+                  rho = cors)
+pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
+```
+
+Some metabolites yield consistent values while others show much lower
+*reproducibility*.
+
+```{r, fig.cap = "Correlation coefficients for metabolites (ordered by magnitude)."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Metabolites")
+grid()
+```
+
+We plot next the data for the best and worst correlating metabolite.
+
+```{r, fig.cap = "Correlations between metabolite abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each metabolite on pairs of measurements for the same participant."}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[, i]), log2(b[, i]),
+     main = colnames(a)[i],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(abs(tmp$rho))
+plot(log2(a[, i]), log2(b[, i]),
+     main = colnames(a)[i],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+```
+
+Metabolite C14:2-OH showed also previously differences between measurements for
+the first 5000 and second 2000 participants.
+
+Next we calculate correlations for participants (correlate measurements for
+each participant between baseline and NAFLD).
+
+```{r}
+cors <- vapply(seq_len(nrow(a)), function(i) {
+    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+
+tmp <- data.frame(AID = rownames(a), rho = cors)
+```
+
+```{r, fig.cap = "Correlation coefficients for pairwise correlations of all metabolite measurements from baseline and NAFLD per participant."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Participants")
+grid()
+```
+
+Correlation of values between baseline and NAFLD are highly correlated. As
+examples we plot below the values for the best and worst correlating
+participant.
+
+```{r}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+```
+
+Values for the first participant are nicely correlated. For the second,
+correlation is present, but there seems to be a systematic shift in some values
+(eventually e.g. values from FIA measurement).
+
+
+## Proteomics data
+
+We evaluate also correlations for the available proteomics data.
+
+```{r}
+swath_data <- data(scan)
+swath_labels <- labels(scan)
+proteins <- swath_labels$description
+proteins <- proteins[swath_labels$Genes != ""]
+colnames(swath_data) <- swath_labels$description
+
+a <- as.matrix(swath_data[n_data$aid_chris, proteins])
+b <- as.matrix(swath_data[n_data$AID, proteins])
+
+cors <- vapply(seq_len(ncol(a)), function(i) {
+    cor(a[, i], b[, i], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+```
+
+The table below lists the correlation coefficients (between values from baseline
+and NAFLD) for all proteins. Proteins are ordered by magnitude of the
+correlation coefficient.
+
+```{r}
+tmp <- data.frame(
+    Genes = swath_labels[match(proteins, swath_labels$description),
+                         c("Genes")],
+    rho = cors)
+rownames(tmp) <- proteins
+pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
+```
+
+High correlations can be observed for many proteins.
+
+```{r, fig.cap = "Correlation coefficients for proteins (ordered by magnitude)."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Proteins")
+grid()
+```
+
+We plot next the data for the best and worst correlating protein.
+
+```{r, fig.cap = "Correlations between protein abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each protein on pairs of measurements for the same participant."}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[, i]), log2(b[, i]),
+     main = tmp[i, "Genes"],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(abs(tmp$rho))
+plot(log2(a[, i]), log2(b[, i]),
+     main = tmp[i, "Genes"],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+```
+
+Next we calculate correlations for participants (correlate measurements for
+each participant between baseline and NAFLD).
+
+```{r}
+cors <- vapply(seq_len(nrow(a)), function(i) {
+    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+
+tmp <- data.frame(AID = rownames(a), rho = cors)
+```
+
+Note that for the in total `r nrow(tmp)` participants we have only for
+`r sum(!is.na(tmp$rho))` measurements both in the baseline and NAFLD collection
+(mostly because measurements are missing in baseline).
+
+```{r, fig.cap = "Correlation coefficients for pairwise correlations of all protein measurements from baseline and NAFLD per participant."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Participants")
+grid()
+```
+
+Correlation of values between baseline and NAFLD are highly correlated. As
+examples we plot below the values for the best and worst correlating
+participant.
+
+```{r}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+```
+
+
+# Session Information
+
+```{r}
+sessionInfo()
 ```
