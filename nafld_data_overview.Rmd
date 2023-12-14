@@ -416,13 +416,18 @@ tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
     pandoc.table(style = "rmarkdown", split.table = Inf)
 ```
 
-- [ ] TODO: discuss this. Which diagnosis to consider or use?
-- [ ] TODO: who defined "diabetes related medication"? Better to use ATC codes
-      instead?
+- [X] DONE: discuss this. Which diagnosis to consider or use? Use the T2D
+      diagnosed.
+- [ ] TODO: who defined "diabetes related medication"? Check the WIKI page for
+      more information on that.
 - Note: more participants in baseline diagnosed with T2D, maybe influence of
   non-fasting?
 - [ ] TODO: consider fasting for the glucose measurement (only TRUE if glucose
-      higher and self-reported fasting).
+      higher **and** self-reported fasting TRUE).
+- [ ] TODO: evaluate:
+  - number of T2D in baseline and NAFLD. Would expect the number to be higher,
+    not lower.
+  - check into participants that revert. Is that true?
 
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
