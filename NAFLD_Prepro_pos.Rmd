@@ -32,7 +32,7 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 
 # Packages
 
-```{r packages}
+```{r packages, message=FALSE}
 library(MsExperiment)
 library(RSQLite)
 library(xcms)
@@ -45,6 +45,7 @@ library(pheatmap)
 library(MsBackendSql)
 library(SummarizedExperiment)
 library(MetaboAnnotation)
+library(vioplot)
 ```
 
 # Data import
@@ -129,7 +130,7 @@ No sample with below average number of spectra
 nafld <- filterRt(nafld, c(10, 250))
 ```
 
-```{r plot again, echo=FALSE}
+```{r plot again, include=FALSE}
 #' Plot again
 chromatogram(nafld, aggregationFun = "max", chunkSize = 6) |>
     plot(col = col_sample, main = "BPC after filtering", lwd = 0.8)
@@ -237,10 +238,13 @@ for (i in seq_len(nrow(intern_standard))) {
 
 The pool samples colored by batches.
 
-```{r EIC-pool, include=FALSE}
+```{r}
 pool_idx <- which(sampleData(nafld)$sample_type == "Pool")
 batches_pool <- col_batch_id[sampleData(nafld)$batch_id][pool_idx]
+```
 
+
+```{r EIC-pool, include=FALSE}
 dr <- "EIC_IS/Pool_batch/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 
@@ -431,7 +435,7 @@ param <- CentWaveParam(peakwidth = c(2, 20), ppm = 50, snthresh = 7,
 # i tested other param these where the best in my opinion
 ```
 
-```{r echo=TRUE}
+```{r include=FALSE}
 #' test for some compounds:
 #' cystine
 cystine_test <- findChromPeaks(eic_cystine, param = param, chunkSize = 10L)
@@ -442,8 +446,7 @@ his_test <- findChromPeaks(eic_his, param = param, chunkSize = 10L)
 head(chromPeaks(his_test))
 ```
 
-
-```{r echo=TRUE}
+```{r include=FALSE}
 #' Plot test chromatogram
 par(mfrow = c(1, 2))
 plot(cystine_test,
@@ -473,10 +476,19 @@ load("after_peakdetect")
 
 ```{r findchrompkeaks all data, echo=TRUE, eval = !file.exists("after_peakdetect")}
 nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
+
+#' remove samples that have overall low intensity/peak detected
+index <- as.vector(table(chromPeaks(nafld)[, "sample"]) < 1500)
+sampleData(nafld)$sample_type[index]
+nafld <- nafld[!index]
+
 save(nafld, file = "after_peakdetect")
 ```
 
-```{r echo=TRUE}
+```{r include=FALSE}
+#' sample index changed so need to run this again
+pool_idx <- sampleData(nafld)$sample_type == "Pool"
+batches_pool <- col_batch_id[sampleData(nafld)$batch_id][pool_idx]
 #' test for ions of interest
 eic_cystine <- chromatogram(nafld,
                             rt = c(202, 217),
@@ -503,7 +515,7 @@ legend("topright", col = col_phenotype, cex = 0.50,
        legend = names(col_phenotype), lty = 1)
 ```
 
-```{r echo=TRUE}
+```{r include=FALSE}
 #' All EICs in pool
 eics <- chromatogram(nafld[pool_idx],
                      mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
@@ -593,7 +605,7 @@ chromPeaks(nafld)[, "sample"] |>
 grid()
 ```
 
-```{r}
+```{r include=FALSE}
 #' All EICs in pool
 eics <- chromatogram(nafld[pool_idx],
                      mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
@@ -644,46 +656,6 @@ for (i in seq_len(nrow(standard))) {
 ## Retention time alignment
 
 Multiple strategies were tested in a separate Rmd file
-
-```{r plot-before-alignment,  echo=FALSE}
-pool_index <- which(sampleData(nafld)$sample_type == "Pool")
-
-bpc_raw <- chromatogram(nafld[pool_index], aggregationFun = "max",
-                        chromPeaks = "none")
-
-plot(bpc_raw, main = "BPC of Pool sample",
-     col = paste0(batches_pool, 80),
-     lwd = 0.8)
-grid()
-legend("topright", col = col_batch_id, cex = 0.50,
-       horiz = TRUE,inset = c(-0.18, -0.1),
-       xpd = TRUE, text.width = 7,
-       bty = "n",
-       legend = names(col_batch_id),
-       lty = 1)
-
-#' standard
-par(mfrow = c(1, 2))
-plot(eic_cystine[1, pool_index],
-     main = "Cystine",
-     col = paste0(batches_pool, 80))
-grid()
-abline(v = 211 , col = "red", lty = 3)
-
-plot(eic_his[1, pool_index],
-     main = "Histidine",
-     col = paste0(batches_pool, 80))
-grid()
-abline(v = 188 , col = "red", lty = 3)
-legend("topright", col = col_batch_id,
-       cex = 0.50,
-       horiz = TRUE,
-       inset = c(-0.18, -0.1),
-       xpd = TRUE,
-       text.width = 7, bty = "n",
-       legend = names(col_batch_id), lty = 1)
-
-```
 
 ```{r}
 #' keep a raw nafld object to compare before/after alignment
@@ -751,7 +723,7 @@ for (i in which(sampleData(nafld)$sample_type != "Blank")) {
 }
 
 #' Function to create rt dataframe;
-#' avoiding subset with NA turns out to be much more efficient
+#' avoiding subset with NA turns out to be much more efficient 
 rtdf <- function(nafld, ID_table) {
     index <- as.vector(ID_table)
     nna <- !is.na(index)
@@ -767,7 +739,7 @@ rtdf <- function(nafld, ID_table) {
 RT_raw <- rtdf(nafld, ID_table)
 
 #' Subset for Pool samples
-final_table <- RT_raw[, index]
+final_table <- RT_raw[, pool_index]
 
 #' run with that first
 #' Define parameters of choice
@@ -793,7 +765,7 @@ legend("topright", col = col_batch_id,
 nafld <- applyAdjustedRtime(nafld)
 ```
 
-```{r}
+```{r include=FALSE}
 #' Plot EICs for the mix standards.
 eics_s <- chromatogram(nafld[pool_index],
                        mz = as.matrix(standard[, c("mzmin", "mzmax")]),
@@ -854,7 +826,7 @@ legend("topright", col = col_batch_id,
        legend = names(col_batch_id), lty = 1)
 ```
 
-```{r}
+```{r include=FALSE}
 #' Plot EICs for the mix standards.
 eics_s <- chromatogram(nafld[pool_index],
                        mz = as.matrix(standard[, c("mzmin", "mzmax")]),
@@ -899,8 +871,7 @@ pandoc.table(Sdsdf, style = "rmarkdown", split.table = Inf)
 ```
 
 ```{r}
-par(mfrow = c(13, 4.5, 1, 0.5))
-library(vioplot)
+par(mar = c(1.3, 4.5, 1, 0.5))
 vioplot(Sdsdf, las = 2, ylab = "RT standard deviation")
 grid()
 ```
@@ -1064,7 +1035,7 @@ save(nafld, file = "nafld_after_Alignment")
 #'Updating parameters
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type[pool_index],
-    minFraction = 0.75, binSize = 0.015, bw = 2)
+    minFraction = 0.75, binSize = 0.015, bw = 1.8)
 
 
 plotChromPeakDensity(
@@ -1195,16 +1166,22 @@ save(nafld, file = "nafld_after_GF")
 ## Removing features detected in blank
 
 ```{r}
+load("nafld_after_GF")
+
 blank_index <- sampleData(nafld)$sample_type == "Blank"
-blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
-                      keepFeatures = TRUE]
+sample_index <- sampleData(nafld)$sample_type != "Blank"
+fts <- featureValues(nafld)
+cont_vec <- vector(length = length(featureDefinitions(nafld)))
 
-#' index of features that are detected in blank samples
-idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
+for (i in seq_len(nrow(fts))) { 
+    cont_vec[i] <- mean(fts[i, blank_index], na.rm = TRUE) > 0.5 * mean(fts[i, sample_index], na.rm = TRUE)
+    }
 
-#' get something like the average intensity for each feature in blank samples
+sum(cont_vec, na.rm = TRUE)
+#' flagged features 
 
-#' also group the intensity for...
+#' add column "possible_cont" to the feature definitions table
+featureDefinitions(nafld)$possible_cont <- cont_vec
 ```
 
 # Next steps
@@ -1212,10 +1189,8 @@ idx_fts_blk <- which(featureDefinitions(nafld)$Blank != 0)
 separate blanks from others
 
 ```{r}
-blank_index <- sampleData(nafld)$sample_type == "Blank"
 blank_sample <- nafld[blank_index, keepAdjustedRtime = TRUE,
                       keepFeatures = TRUE]
-
 nafld <- nafld[!blank_index, keepAdjustedRtime = TRUE,
                keepFeatures = TRUE]
 
