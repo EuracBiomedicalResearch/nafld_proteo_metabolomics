@@ -32,7 +32,7 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 
 # Packages
 
-```{r packages}
+```{r packages, message=FALSE}
 library(MsExperiment)
 library(RSQLite)
 library(xcms)
@@ -478,14 +478,17 @@ load("after_peakdetect")
 nafld <- findChromPeaks(nafld, param = param, chunkSize = 10L)
 
 #' remove samples that have overall low intensity/peak detected
-index <- which(table(chromPeaks(nafld)[, "sample"]) < 1500)
+index <- as.vector(table(chromPeaks(nafld)[, "sample"]) < 1500)
 sampleData(nafld)$sample_type[index]
-nafld <- nafld[-index]
+nafld <- nafld[!index]
 
 save(nafld, file = "after_peakdetect")
 ```
 
 ```{r include=FALSE}
+#' sample index changed so need to run this again
+pool_idx <- sampleData(nafld)$sample_type == "Pool"
+batches_pool <- col_batch_id[sampleData(nafld)$batch_id][pool_idx]
 #' test for ions of interest
 eic_cystine <- chromatogram(nafld,
                             rt = c(202, 217),
