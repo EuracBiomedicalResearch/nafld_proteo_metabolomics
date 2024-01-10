@@ -1,5 +1,5 @@
 ---
-title: "NAFLD"
+title: "Overview and characterization of the NAFLD substudy"
 author: "Johannes Rainer"
 graphics: yes
 output:
@@ -13,6 +13,13 @@ library(knitr)
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 10, fig.height = 7)
 ```
+
+# Introduction
+
+In this document we evaluate and analyze the clinical/phenotypic data available
+for participants of the NAFLD sub-study of CHRIS. In addition, we
+stratify/diagnose individuals following recent clinical guidelines.
+
 
 # NAFLD data
 
@@ -282,6 +289,10 @@ difference can be seen for cases and controls as well as for BMI.
 
 # Classifying NAFLD/MASLD and diabetes
 
+In this section we define different clinical phenotypes for study participants
+based on the data collected in the study.
+
+
 ## Type 2 Diabetes
 
 Type 2 Diabetes (T2B) is diagnosed for study participants using the information
@@ -313,11 +324,13 @@ n_data$chris_dm <- chris_int$x0dm00 # self-reported diabetes diagnosis
 n_data$chris_HbA1c <- chris_lab$x0lp06a # Glycated Hemoglobin
 n_data$chris_glucose <- chris_lab$x0lp05 # fasting glucose
 n_data$chris_dia_med <- chris_med$x0dd21 # diabetes medication
+n_data$chris_sr_fasting <- chris_lab$x0bc12 # self-reported fasting
 ```
 
 We next extract the same data from the NAFLD collection. We also update the
 self-reported diabetes diagnosis considering all participants that reported
-diabetes at baseline OR at NAFLD follow-up.
+diabetes at baseline OR at NAFLD follow-up. Finally, we extract the information
+on self-reported fasting and no drinking.
 
 ```{r}
 med <- nafldData("Drug")
@@ -338,7 +351,36 @@ n_data$self_dm[which(int$nadm00 == "Yes")] <- "Yes"
 n_data$HbA1c <- lab$nalp06a
 n_data$glucose <- lab$nalp05
 n_data$dia_med <- med$nadd21
+
+#' self-reported fasting.
+n_data$sr_fasting <- lab$nabc12
+n_data$sr_no_drinking <- lab$nabc13
 ```
+
+Glucose levels can be affected by the (missing) fasting status. Thus we next
+evaluate glucose levels in participants with or without self-reported fasting
+(and no drinking).
+
+```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status."}
+library(beeswarm)
+
+par(mfrow = c(1, 2))
+beeswarm(split(n_data$glucose, n_data$sr_fasting), pch = 21,
+         bg = "#00000020", main = "Self-reported fasting",
+         ylab = "Glucose")
+grid()
+abline(h = 126)
+beeswarm(split(n_data$glucose, n_data$sr_no_drinking), pch = 21,
+         bg = "#00000020", main = "Self-reported no drinking",
+         ylab = "Glucose")
+grid()
+abline(h = 126)
+```
+
+Drinking did not affect the glucose levels, while for some participant that did
+not fast the glucose levels are higher than the cut-off of 126 used in diabetes
+diagnosis. Thus, we below only consider glucose levels for participants that did
+not eat (self-reported) prior to the blood drawing.
 
 And we are next diagnosing the NAFLD study participants based on the clinical
 and medication information (ignoring the self-reported diagnosis).
@@ -353,15 +395,19 @@ t2d[which(n_data$dia_med == "Yes")] <- TRUE
 #' Glycated hemoglobin %: nalp06a
 t2d[which(n_data$HbA1c >= 6.5)] <- TRUE
 
-#' fasting glucose: nalp05
-t2d[which(n_data$glucose >= 126)] <- TRUE
+#' fasting glucose: nalp05 + fasting
+t2d[which(n_data$glucose >= 126 & n_data$sr_fasting == "Yes")] <- TRUE
 
 #' finally define those without clear information.
 no_lab <- is.na(n_data$HbA1c)
 t2d[is.na(n_data$dia_med) & no_lab] <- NA
 
 n_data$t2d <- t2d
+```
 
+The same criteria are applied to CHRIS baseline samples.
+
+```{r}
 #' Diagnosing in CHRIS
 t2d <- rep(FALSE, nrow(n_data))
 
@@ -372,7 +418,8 @@ t2d[which(n_data$chris_dia_med == "Yes")] <- TRUE
 t2d[which(n_data$chris_HbA1c >= 6.5)] <- TRUE
 
 #' fasting glucose: nalp05
-t2d[which(n_data$chris_glucose >= 126)] <- TRUE
+t2d[which(n_data$chris_glucose >= 126 &
+          n_data$chris_sr_fasting == "Yes")] <- TRUE
 
 n_data$chris_t2d <- t2d
 ```
@@ -394,41 +441,70 @@ tmp <- data.frame(
 library(pander)
 pandoc.table(
     tmp, style = "rmarkdown",
-    caption = "Overview of participants with and without type 2 diabetes.")
+    caption = paste0("Overview of NAFLD participants with and without type 2",
+                     " diabetes (diagnosed based on laboratory parameters ",
+                     "and medication)."))
 
 ```
 
-The number of diagnosed T2D is higher then the self-reported diagnosis
-(considering baseline and NAFLD). Below we evaluate the data for participants
-for which the diagnosis (either based on clinical parameters here or
-self-reported in the baseline or follow-up) does not agree.
+Below we compare the total number of diagnosed T2D in baseline and NAFLD as well
+as the self-reported diabetes status.
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           NAFLD_T2D = as.integer(table(n_data$t2d)),
+           CHRIS_T2D = as.integer(table(n_data$chris_t2d)),
+           NAFLD_SR_DM = as.integer(table(n_data$self_dm)),
+           CHRIS_SR_DM = as.integer(table(n_data$chris_dm))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diabetes cases in CHRIS baseline and ",
+                                  "NAFLD, diagnosed and self-reported (SR)."))
+```
+
+Surprisingly, the number of cases are higher in CHRIS baseline than in the NAFLD
+studies, both diagnosed and self-reported. The higher proportion of T2D
+diagnosed participants in CHRIS baseline seems to be mostly driven by glycated
+hemoglobin measurements (see tables below). Also interestingly, self-reported
+diabetes is much higher than diagnosed (type 2) diabetes in NAFLD.
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           medication = as.integer(table(n_data$dia_med == "Yes")),
+           HbA1c = as.integer(table(n_data$HbA1c >= 6.5)),
+           glucose = as.integer(table(n_data$glucose >= 126 &
+                                      n_data$sr_fasting == "Yes"))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diagnostic criteria in NAFLD."))
+```
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           medication = as.integer(table(n_data$chris_dia_med == "Yes")),
+           HbA1c = as.integer(table(n_data$chris_HbA1c >= 6.5)),
+           glucose = as.integer(table(n_data$chris_glucose >= 126 &
+                                      n_data$chris_sr_fasting == "Yes"))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diagnostic criteria in CHRIS."))
+```
+
+Below we evaluate the data for participants for which the diagnosed T2B differs
+between baseline and NAFLD collection.
 
 ```{r}
-tmp <- cbind(n_data$chris_dm == "Yes",
-             n_data$self_dm == "Yes",
-             n_data$chris_t2d,
-             n_data$t2d)
-ambi <- !rowSums(tmp) %in% c(0, 4)
-
-tmp <- n_data[ambi, ]
+sel <- n_data$t2d != n_data$chris_t2d
+tmp <- n_data[sel, ]
 tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
         "chris_glucose", "glucose")] |>
     pandoc.table(style = "rmarkdown", split.table = Inf)
 ```
 
-- [X] DONE: discuss this. Which diagnosis to consider or use? Use the T2D
-      diagnosed.
-- [ ] TODO: who defined "diabetes related medication"? Check the WIKI page for
-      more information on that.
-- Note: more participants in baseline diagnosed with T2D, maybe influence of
-  non-fasting?
-- [ ] TODO: consider fasting for the glucose measurement (only TRUE if glucose
-      higher **and** self-reported fasting TRUE).
-- [ ] TODO: evaluate:
-  - number of T2D in baseline and NAFLD. Would expect the number to be higher,
-    not lower.
-  - check into participants that revert. Is that true?
+All these participants were diagnosed with T2D based on CHRIS baseline data, but
+not with data from the NAFLD collection. For all these participants the percent
+glycated hemoglobin values are below the cut-off of 6.5% in NAFLD while they do
+have higher levels in CHRIS baseline.
 
+- [ ] TODO: check instruments between baseline and NAFLD study - was there a
+      change?
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
 without T2D.
@@ -463,9 +539,21 @@ grid()
 Participants with T2D have slightly higher liver stiffness measurements than
 those without. This might however be a consequence of their higher BMI.
 
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without T2D."}
+vioplot(split(n_data$visc_fat, f), main = "Visceral fat/T2D",
+        ylab = expression(visceral~fat))
+grid()
+```
 
-- visc fat
-- fib4
+Again, participants with T2D have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without T2D."}
+vioplot(split(n_data$fib4, f), main = "FIB4/T2D",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without T2D.
 
 
 
