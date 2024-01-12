@@ -1,11 +1,12 @@
 ---
-title: "NAFLD"
+title: "Overview and characterization of the NAFLD substudy"
 author: "Johannes Rainer"
 graphics: yes
 output:
   BiocStyle::html_document:
     toc_float: true
     code_folding: hide
+bibliography: references.bib
 ---
 
 ```{r, echo = FALSE}
@@ -13,6 +14,13 @@ library(knitr)
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 10, fig.height = 7)
 ```
+
+# Introduction
+
+In this document we evaluate and analyze the clinical/phenotypic data available
+for participants of the NAFLD sub-study of CHRIS. In addition, we
+stratify/diagnose individuals following recent clinical guidelines.
+
 
 # NAFLD data
 
@@ -67,7 +75,7 @@ gender and then by case/control definition.
 n_anthro <- nafldData("anthro")
 rownames(n_anthro) <- n_anthro$AID
 
-n_data$BMI <- n_anthro[n_data$AID, "naan03"]
+n_data$BMI <- n_anthro[n_data$AID, "naan03a"]
 n_data$body_fat <- n_anthro[n_data$AID, "naan04"]
 n_data$visc_fat <- n_anthro[n_data$AID, "naan05"]
 
@@ -137,7 +145,7 @@ n_data$fib4 <- tmp[n_data$AID, "nascfib4"]
 n_data$metsym <- tmp[n_data$AID, "nascmets"]
 ```
 
-From the `r nrow(n_data)` participants, 
+From the `r nrow(n_data)` participants,
 `r sum(n_data$liver_stiffness_iqr >= 30, na.rm = TRUE)`
 have a liver stiffness IQR `>= 30`.
 
@@ -279,19 +287,609 @@ While no cases of metabolic syndrome seem to be balanced between male and female
 participants and seem to be independent of the participants' ages, a strong
 difference can be seen for cases and controls as well as for BMI.
 
-```{r}
-#' Drug usage. only categorical.
+
+# Classifying NAFLD/MASLD and diabetes
+
+In this section we define different clinical phenotypes for study participants
+based on the data collected in the study.
+
+
+## Type 2 Diabetes
+
+Type 2 Diabetes (T2B) is diagnosed for study participants using the information
+and data from the study according to [@american_diabetes_association_2_2018]
+[@resl_guidelines_2023]. The criteria are:
+
+- HbA1C >= 6.5%
+- OR Fasting glucose >= 126 mg/dl
+- OR Anti-diabetic medication
+
+We are loading in addition CHRIS baseline data to enable comparison of these
+values in the baseline and the NAFLD study collection.
+
+```{r, message = FALSE}
+library(chrisData)
+chris_med <- chrisData("drugs_summary")
+rownames(chris_med) <- chris_med$AID
+chris_med <- chris_med[n_data$aid_chris, ]
+
+chris_int <- chrisData("interview")
+rownames(chris_int) <- chris_int$AID
+chris_int <- chris_int[n_data$aid_chris, ]
+
+chris_lab <- chrisData("labdata")
+rownames(chris_lab) <- chris_lab$AID
+chris_lab <- chris_lab[n_data$aid_chris, ]
+
+n_data$chris_dm <- chris_int$x0dm00 # self-reported diabetes diagnosis
+n_data$chris_HbA1c <- chris_lab$x0lp06a # Glycated Hemoglobin
+n_data$chris_glucose <- chris_lab$x0lp05 # fasting glucose
+n_data$chris_dia_med <- chris_med$x0dd21 # diabetes medication
+n_data$chris_sr_fasting <- chris_lab$x0bc12 # self-reported fasting
 ```
 
-What still needs to be done:
+We next extract the same data from the NAFLD collection. We also update the
+self-reported diabetes diagnosis considering all participants that reported
+diabetes at baseline OR at NAFLD follow-up. Finally, we extract the information
+on self-reported fasting and no drinking.
 
-- Diabetes diagnosis (using the definition from the shared document).
+```{r}
+med <- nafldData("Drug")
+rownames(med) <- med$AID
+med <- med[n_data$AID, ]
+
+int <- nafldData("interview")
+rownames(int) <- int$AID
+int <- int[n_data$AID, ]
+
+lab <- nafldData("Labdata")
+rownames(lab) <- lab$AID
+lab <- lab[n_data$AID, ]
+
+#' self-reported diabetes considering also baseline
+n_data$self_dm <- n_data$chris_dm
+n_data$self_dm[which(int$nadm00 == "Yes")] <- "Yes"
+n_data$HbA1c <- lab$nalp06a
+n_data$glucose <- lab$nalp05
+n_data$dia_med <- med$nadd21
+
+#' self-reported fasting.
+n_data$sr_fasting <- lab$nabc12
+n_data$sr_no_drinking <- lab$nabc13
+```
+
+Glucose levels can be affected by the (missing) fasting status. Thus we next
+evaluate glucose levels in participants with or without self-reported fasting
+(and no drinking).
+
+```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status.", fig.width = 12, fig.height = 5}
+library(beeswarm)
+
+par(mfrow = c(1, 2))
+beeswarm(split(n_data$glucose, n_data$sr_fasting), pch = 21,
+         bg = "#00000020", main = "Self-reported fasting",
+         ylab = "Glucose")
+grid()
+abline(h = 126)
+beeswarm(split(n_data$glucose, n_data$sr_no_drinking), pch = 21,
+         bg = "#00000020", main = "Self-reported no drinking",
+         ylab = "Glucose")
+grid()
+abline(h = 126)
+```
+
+Drinking did not affect the glucose levels, while for some participant that did
+not fast the glucose levels are higher than the cut-off of 126 used in diabetes
+diagnosis. Thus, we below only consider glucose levels for participants that did
+not eat (self-reported) prior to the blood drawing.
+
+And we are next diagnosing the NAFLD study participants based on the clinical
+and medication information (ignoring the self-reported diagnosis).
+
+```{r}
+#' Diagnosing in NAFLD
+t2d <- rep(FALSE, nrow(n_data))
+
+#' Anti-diabetic medication: nadd21
+t2d[which(n_data$dia_med == "Yes")] <- TRUE
+
+#' Glycated hemoglobin %: nalp06a
+t2d[which(n_data$HbA1c >= 6.5)] <- TRUE
+
+#' fasting glucose: nalp05 + fasting
+t2d[which(n_data$glucose >= 126 & n_data$sr_fasting == "Yes")] <- TRUE
+
+#' finally define those without clear information.
+no_lab <- is.na(n_data$HbA1c)
+t2d[is.na(n_data$dia_med) & no_lab] <- NA
+
+n_data$t2d <- t2d
+```
+
+The same criteria are applied to CHRIS baseline samples.
+
+```{r}
+#' Diagnosing in CHRIS
+t2d <- rep(FALSE, nrow(n_data))
+
+#' Anti-diabetic medication: nadd21
+t2d[which(n_data$chris_dia_med == "Yes")] <- TRUE
+
+#' Glycated hemoglobin %: nalp06a
+t2d[which(n_data$chris_HbA1c >= 6.5)] <- TRUE
+
+#' fasting glucose: nalp05
+t2d[which(n_data$chris_glucose >= 126 &
+          n_data$chris_sr_fasting == "Yes")] <- TRUE
+
+n_data$chris_t2d <- t2d
+```
+
+Note that for two participants no glycated hemoglobin measurement was
+available: one of them was (in CHRIS baseline) diabetic and one was selected as
+control (i.e., not diabetic). According to the available medication information
+in the NAFLD substudy these two participants were still diagnosed the same
+(i.e. one as diabetic and one not).
+
+```{r, results = "asis"}
+tmp <- data.frame(
+    count = as.integer(table(n_data$t2d)),
+    females = vapply(split(n_data$na_sex, n_data$t2d),
+                     function(x) sum(x == "Female"), integer(1)),
+    age = vapply(split(n_data$na_ager, n_data$t2d), mean, numeric(1)),
+    BMI = vapply(split(n_data$BMI, n_data$t2d), mean, numeric(1), na.rm = TRUE)
+)
+library(pander)
+pandoc.table(
+    tmp, style = "rmarkdown",
+    caption = paste0("Overview of NAFLD participants with and without type 2",
+                     " diabetes (diagnosed based on laboratory parameters ",
+                     "and medication)."))
+
+```
+
+Below we compare the total number of diagnosed T2D in baseline and NAFLD as well
+as the self-reported diabetes status.
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           NAFLD_T2D = as.integer(table(n_data$t2d)),
+           CHRIS_T2D = as.integer(table(n_data$chris_t2d)),
+           NAFLD_SR_DM = as.integer(table(n_data$self_dm)),
+           CHRIS_SR_DM = as.integer(table(n_data$chris_dm))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diabetes cases in CHRIS baseline and ",
+                                  "NAFLD, diagnosed and self-reported (SR)."))
+```
+
+Surprisingly, the number of cases are higher in CHRIS baseline than in the NAFLD
+studies, both diagnosed and self-reported. The higher proportion of T2D
+diagnosed participants in CHRIS baseline seems to be mostly driven by glycated
+hemoglobin measurements (see tables below). Also interestingly, self-reported
+diabetes is much higher than diagnosed (type 2) diabetes in NAFLD.
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           medication = as.integer(table(n_data$dia_med == "Yes")),
+           HbA1c = as.integer(table(n_data$HbA1c >= 6.5)),
+           glucose = as.integer(table(n_data$glucose >= 126 &
+                                      n_data$sr_fasting == "Yes"))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diagnostic criteria in NAFLD."))
+```
+
+```{r, results = "asis"}
+data.frame(status = c("No", "Yes"),
+           medication = as.integer(table(n_data$chris_dia_med == "Yes")),
+           HbA1c = as.integer(table(n_data$chris_HbA1c >= 6.5)),
+           glucose = as.integer(table(n_data$chris_glucose >= 126 &
+                                      n_data$chris_sr_fasting == "Yes"))) |>
+    pandoc.table(style = "rmarkdown",
+                 caption = paste0("Diagnostic criteria in CHRIS."))
+```
+
+Below we evaluate the data for participants for which the diagnosed T2B differs
+between baseline and NAFLD collection.
+
+```{r, results = "asis"}
+sel <- n_data$t2d != n_data$chris_t2d
+tmp <- n_data[sel, ]
+tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
+        "chris_glucose", "glucose")] |>
+    pandoc.table(style = "rmarkdown", split.table = Inf)
+```
+
+All these participants were diagnosed with T2D based on CHRIS baseline data, but
+not with data from the NAFLD collection. For all these participants the percent
+glycated hemoglobin values are below the cut-off of 6.5% in NAFLD while they do
+have higher levels in CHRIS baseline.
+
+- [ ] TODO: check instruments between baseline and NAFLD study - was there a
+      change that could explain differences in HbA1c?
+- [ ] TODO [Essi]: check if there was difference in lifestyle or nutrition
+      between baseline and NAFLD.
+- [ ] TODO: reach out to Martin, what is his opinion on that?
+- [ ] TODO: discuss with Christoph, what is his opinion on that?
+
+We next evaluate distribution of age, BMI, sex etc for participants with and
+without T2D.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without T2D."}
+f <- paste0(n_data$na_sex, n_data$t2d)
+vioplot(split(n_data$na_ager, f), main = "Age/T2D", ylab = "age [years]")
+grid()
+```
+
+Age distribution is similar for female or male study participants with or
+without T2D. We next evaluate the distribution of BMI values for T2D and control
+(again stratified by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without T2D."}
+vioplot(split(n_data$BMI, f), main = "BMI/T2D", ylab = "BMI")
+grid()
+```
+
+Participants with T2D have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without T2D."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/T2D",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with T2D have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without T2D."}
+vioplot(split(n_data$visc_fat, f), main = "Visceral fat/T2D",
+        ylab = expression(visceral~fat))
+grid()
+```
+
+Again, participants with T2D have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without T2D."}
+vioplot(split(n_data$fib4, f), main = "FIB4/T2D",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without T2D.
+
+
+# Classification of steatosis in MASLD/NAFLD
+
+Clinical diagnosis of metabolic dysfunction associated steatotic liver disease
+(MASLD [@rinella_multisociety_2024], formerly NAFLD
+[@european_association_for_the_study_of_the_liver_easl_easl-easd-easo_2016])
+is based on a range of parameters:
+
+1) Presence of steatotic liver disease: sonographic evaluation, steatose score
+   of 2 - 3.
+
+2) Presence of cardiometabolic risk factors/criteria (at least one out of 5):
+   a) BMI >= 25 OR waist circumference > 94 (M) 80 (F) cm.
+   b) Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+      treatment for type 2 diabetes.
+   c) Blood pressure >= 130/85 mmHg OR specific antihypertensive drug treatment.
+   d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+   e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+3) Rule out alcoholic liver disease. Alcohol consumption > 40g/day (one
+   *standard drink* is 10g alcohol).
+
+This diagnosis includes also metabolic syndrome (MetS) which is diagnosed based
+on the presence of 3 risk factors:
+
+- (must have): central obesity (WC >= 94 (M) >= 80 (F) cm.
+- (two out of four):
+  - TG >= 150 mg/dl OR specific treatment for this lipid abnormality (**d**).
+  - HDL < 40 (M) 50 (F) mg/dl OR specific treatment for this lipid abnormality
+    (**e**).
+  - systolic BP >= 130 or diastolic >= 85 mmHG OR treatment for hypertension
+    (**c**).
+  - fasting glucose >= 100 mg/dl OR diagnosed T2D (**b**).
+
+Below we perform the diagnosis based on the above criteria.
+
+Presence of steatotic liver disease.
+
+```{r}
+#' steatose score: naab14, visual scoring of liver fat.
+n_data$SLD <- n_data$visual_fat > 1
+summary(n_data$SLD)
+```
+
+**a)** BMI >= 25 or waist circumference > 94 (M) 80 (F) cm.
+
+```{r}
+#' Waist circumference
+n_data$waist_circumference <- n_anthro[n_data$AID, "naan12"]
+#' Classify
+n_data$cardiometabolic_a <-
+    n_data$BMI >= 25 |
+    (n_data$waist_circumference >= 94 & n_data$na_sex == "Male") |
+    (n_data$waist_circumference >= 80 & n_data$na_sex == "Female")
+```
+
+A quite large proportion of participants fulfill this criteria - also maybe not
+unexpected based on the selection criteria for study participants.
+
+**b)** Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+treatment for type 2 diabetes (already included in the diagnosis of T2D
+performed in the previous section).
+
+```{r}
+#' Classify
+n_data$cardiometabolic_b <-
+    n_data$glucose >= 100 |
+    n_data$HbA1c > 5.7 |
+    n_data$t2d
+```
+
+**c)** Blood pressure >= 130/85 mmHg OR specific antihypertensive drug
+treatment.
+
+```{r}
+#' Add blood pressure measurements.
+n_data$systolic_bp <- n_anthro[n_data$AID, "nabp01"] # systolic BP [mm/Hg]
+n_data$diastolic_bp <- n_anthro[n_data$AID, "nabp02"] # diastolic BP [mm/Hg]
+n_data$systolic_bp[n_data$systolic_bp < 0] <- NA_real_
+n_data$diastolic_bp[n_data$diastolic_bp < 0] <- NA_real_
+#' Add blood pressure lowering therapy
+n_data$pb_med <- med$nadd20 # blood pressure lowering agents
+#' Classify
+n_data$cardiometabolic_c <-
+    n_data$systolic_bp >= 130 |
+    n_data$diastolic_bp >= 85 |
+    n_data$pb_med == "Yes"
+```
+
+**d)** Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+
+```{r}
+#' triglycerides [mg/dl]
+n_data$triglycerides <- lab[n_data$AID, "nalp19"]
+n_data$lm_med <- med$nadd22 # lipid modifying agents
+n_data$ms_med <- med$nadd23 # metabolic syndrome medication
+#' Classify
+n_data$cardiometabolic_d <-
+    n_data$triglycerides >= 150 |
+    n_data$lm_med == "Yes"
+```
+
+**e)** HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+```{r}
+#' HDL [mg/dl]: nalp17
+n_data$HDL <- lab[n_data$AID, "nalp17"]
+#' Classify
+n_data$cardiometabolic_e <-
+    (n_data$HDL <= 40 & n_data$na_sex == "Male") |
+    (n_data$HDL <= 50 & n_data$na_sex == "Female") |
+    n_data$lm_med == "Yes"
+```
+
+Summary of the numbers of numbers of cases for each sub-criteria is provided
+below.
+
+```{r, results = "asis"}
+cardiom <- n_data[, c("cardiometabolic_a", "cardiometabolic_b",
+                      "cardiometabolic_c", "cardiometabolic_d",
+                      "cardiometabolic_e")]
+lapply(cardiom, summary) |>
+    do.call(what = rbind) |>
+    pandoc.table(
+        style = "rmarkdown",
+        caption = paste0("Number of cases for each cardiometabolic sub-criteria"))
+
+```
+
+Most participants scored positive in subcategories **c** (hypertension) and
+**a** (BMI and waist circumference). We visually inspect the overlap between the
+sub-criteria also with an upset plot.
+
+```{r, caption = "Overview and overlap of participants scoring positive in the individual cardiometabolic sub-criteria."}
+library(UpSetR)
+cardiom <- as.data.frame(lapply(cardiom, as.integer))
+upset(cardiom, order.by = "degree")
+```
+
+A high number of participants score positive in all sub-criteria.
+
+At last we combine the scores from the sub-criteria to diagnose MASLD based on
+the criteria 1) and 2) from the definition. Criteria 3), related to alcohol
+consumption will be evaluated later.
+
+1) Presence of steatotic liver disease: sonographic evaluation, steatose score
+   of 2 - 3.
+
+2) Presence of cardiometabolic risk factors/criteria (at least one out of 5):
+   a) BMI >= 25 OR waist circumference > 94 (M) 80 (F) cm.
+   b) Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+      treatment for type 2 diabetes.
+   c) Blood pressure >= 130/85 mmHg OR specific antihypertensive drug treatment.
+   d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+   e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+```{r}
+#' MASLD:
+#' - steatotic liver disease
+#' - one out of 5 of a), b), c), d) and e)
+n_data$MASLD <-
+    n_data$SLD &
+    rowSums(n_data[, c("cardiometabolic_a", "cardiometabolic_b",
+                       "cardiometabolic_c", "cardiometabolic_d",
+                       "cardiometabolic_e")], na.rm =TRUE) > 0
+summary(n_data$MASLD)
+```
+
+The MASLD positive/negative cases are thus almost balanced in the present
+study. Also, maybe interesting, there were in total `r sum(n_data$SLD)`
+individuals scored positive for steatotic liver disease, but 2 of them did not
+fulfill the additional criteria for MASLD.
+
+Again, we next evaluate distribution of age, BMI, sex etc for participants with
+and without MASLD.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without MASLD."}
+f <- paste0(n_data$na_sex, n_data$MASLD)
+vioplot(split(n_data$na_ager, f), main = "Age/MASLD", ylab = "age [years]")
+grid()
+```
+
+Age distribution is about similar for female participants. For males, MASLD
+negative have an on average slightly higher age. We next evaluate the
+distribution of BMI values for MASLD positive/negative cases (again stratified
+by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$BMI, f), main = "BMI/MASLD", ylab = "BMI")
+grid()
+```
+
+Participants with MASLD have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without MASLD."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/MASLD",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with MASLD have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$visc_fat, f), main = "Visceral fat/MASLD",
+        ylab = expression(visceral~fat))
+grid()
+```
+
+Again, participants with MASLD have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$fib4, f), main = "FIB4/MASLD",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without MASLD.
+
+At last we evaluate also the T2D cases with and without MASLD.
+
+```{r}
+table(n_data[, c("t2d", "MASLD")])
+```
+
+A higher proportion of participants with T2D score in addition also positive for
+MASLD.
+
+
+# Classification of Metabolic Syndrome
+
+Metabolic syndrome (MetS) is diagnosed based on the presence of 3 risk factors
+(and partially overlaps with the MASLD definition above):
+
+- (must have): central obesity (WC >= 94 (M) >= 80 (F) cm.
+- (two out of four):
+  - TG >= 150 mg/dl OR specific treatment for this lipid abnormality (**d**).
+  - HDL < 40 (M) 50 (F) mg/dl OR specific treatment for this lipid abnormality
+    (**e**).
+  - systolic BP >= 130 or diastolic >= 85 mmHG OR treatment for hypertension
+    (**c**).
+  - fasting glucose >= 100 mg/dl OR diagnosed T2D (**b**).
+
+```{r}
+n_data$MetS <-
+    ((n_data$waist_circumference >= 94 & n_data$na_sex == "Male") |
+     (n_data$waist_circumference >= 80 & n_data$na_sex == "Female")) &
+    rowSums(n_data[, c("cardiometabolic_b", "cardiometabolic_c",
+                       "cardiometabolic_d", "cardiometabolic_e")],
+            na.rm =TRUE) > 1
+```
+
+The overlap between participants with metabolic syndrome and MASLD are shown
+below.
+
+```{r}
+table(n_data[, c("MetS", "MASLD")])
+```
+
+For the biggest part, individuals with MetS are also positive for MASLD. On the
+other side, also a quite large proportion of individuals are classified to have
+MASLD but are not positive for MetS. Most T2D positive cases score also positive
+for MetS (see below).
+
+```{r}
+table(n_data[, c("t2d", "MetS")])
+```
+
+Again, we next evaluate distribution of age, BMI, sex etc for participants with
+and without MetS.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without MetS."}
+f <- paste0(n_data$na_sex, n_data$MetS)
+vioplot(split(n_data$na_ager, f), main = "Age/MetS", ylab = "age [years]")
+grid()
+```
+
+For females the average age of MetS positive cases is higher while for male
+participant the opposite effect can be observed. We next evaluate the
+distribution of BMI values for MetS and control (again stratified by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without MetS."}
+vioplot(split(n_data$BMI, f), main = "BMI/MetS", ylab = "BMI")
+grid()
+```
+
+Participants with MetS have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without MetS."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/MetS",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with MetS have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without MetS."}
+tmp <- split(n_data$visc_fat, f)
+tmp <- lapply(tmp, function(z) z[!is.na(z)])
+tmp <- tmp[lengths(tmp) > 0]
+vioplot(tmp, main = "Visceral fat/MetS",
+        ylab = expression(visceral~fat))
+grid()
+```
+
+Again, participants with MetS have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without MetS."}
+vioplot(split(n_data$fib4, f), main = "FIB4/MetS",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without MetS.
+
 
 
 # NAFLD omics data overview
 
-Get the IDs of NAFLD participants and their respective CHRIS AID.
 
+Get the IDs of NAFLD participants and their respective CHRIS AID.
 
 ```{r, message = FALSE}
 library(chrisData)
@@ -350,3 +948,242 @@ do <- read.table(system.file("txt", "drop-outs.txt", package = "chrisData"),
 any(do$aid %in% nafld$AID)
 any(do$aid %in% nafld$aid_nafld)
 ```
+
+
+## Metabolomics data
+
+We next evaluate metabolite concentrations in baseline and NAFLD. We first
+calculate correlations for metabolites (for each metabolite correlating
+measurements in baseline to those from NAFLD).
+
+```{r}
+p180_data <- data(p180)
+p180_labels <- labels(p180)
+metabolites <- p180_labels$description
+metabolites <- metabolites[-grep("assay flags", metabolites)]
+colnames(p180_data) <- p180_labels$description
+
+a <- as.matrix(p180_data[n_data$aid_chris, metabolites])
+b <- as.matrix(p180_data[n_data$AID, metabolites])
+
+cors <- vapply(seq_len(ncol(a)), function(i) {
+    cor(a[, i], b[, i], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+```
+
+The table below lists the correlation coefficients (between values from baseline
+and NAFLD) for all metabolites. Metabolites are ordered by magnitude of the
+correlation coefficient.
+
+```{r}
+tmp <- data.frame(p180_labels[match(metabolites, p180_labels$description),
+                              c("analyte_name", "analyte_class")],
+                  rho = cors)
+pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
+```
+
+Some metabolites yield consistent values while others show much lower
+*reproducibility*.
+
+```{r, fig.cap = "Correlation coefficients for metabolites (ordered by magnitude)."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Metabolites")
+grid()
+```
+
+We plot next the data for the best and worst correlating metabolite.
+
+```{r, fig.cap = "Correlations between metabolite abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each metabolite on pairs of measurements for the same participant."}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[, i]), log2(b[, i]),
+     main = colnames(a)[i],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(abs(tmp$rho))
+plot(log2(a[, i]), log2(b[, i]),
+     main = colnames(a)[i],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+```
+
+Metabolite C14:2-OH showed also previously differences between measurements for
+the first 5000 and second 2000 participants.
+
+Next we calculate correlations for participants (correlate measurements for
+each participant between baseline and NAFLD).
+
+```{r}
+cors <- vapply(seq_len(nrow(a)), function(i) {
+    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+
+tmp <- data.frame(AID = rownames(a), rho = cors)
+```
+
+```{r, fig.cap = "Correlation coefficients for pairwise correlations of all metabolite measurements from baseline and NAFLD per participant."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Participants")
+grid()
+```
+
+Correlation of values between baseline and NAFLD are highly correlated. As
+examples we plot below the values for the best and worst correlating
+participant.
+
+```{r}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+```
+
+Values for the first participant are nicely correlated. For the second,
+correlation is present, but there seems to be a systematic shift in some values
+(eventually e.g. values from FIA measurement).
+
+
+## Proteomics data
+
+We evaluate also correlations for the available proteomics data.
+
+```{r}
+swath_data <- data(scan)
+swath_labels <- labels(scan)
+proteins <- swath_labels$description
+proteins <- proteins[swath_labels$Genes != ""]
+colnames(swath_data) <- swath_labels$description
+
+a <- as.matrix(swath_data[n_data$aid_chris, proteins])
+b <- as.matrix(swath_data[n_data$AID, proteins])
+
+cors <- vapply(seq_len(ncol(a)), function(i) {
+    cor(a[, i], b[, i], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+```
+
+The table below lists the correlation coefficients (between values from baseline
+and NAFLD) for all proteins. Proteins are ordered by magnitude of the
+correlation coefficient.
+
+```{r}
+tmp <- data.frame(
+    Genes = swath_labels[match(proteins, swath_labels$description),
+                         c("Genes")],
+    rho = cors)
+rownames(tmp) <- proteins
+pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
+```
+
+High correlations can be observed for many proteins.
+
+```{r, fig.cap = "Correlation coefficients for proteins (ordered by magnitude)."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Proteins")
+grid()
+```
+
+We plot next the data for the best and worst correlating protein.
+
+```{r, fig.cap = "Correlations between protein abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each protein on pairs of measurements for the same participant."}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[, i]), log2(b[, i]),
+     main = tmp[i, "Genes"],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(abs(tmp$rho))
+plot(log2(a[, i]), log2(b[, i]),
+     main = tmp[i, "Genes"],
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+```
+
+Next we calculate correlations for participants (correlate measurements for
+each participant between baseline and NAFLD).
+
+```{r}
+cors <- vapply(seq_len(nrow(a)), function(i) {
+    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
+        method = "spearman")
+}, numeric(1))
+
+tmp <- data.frame(AID = rownames(a), rho = cors)
+```
+
+Note that for the in total `r nrow(tmp)` participants we have only for
+`r sum(!is.na(tmp$rho))` measurements both in the baseline and NAFLD collection
+(mostly because measurements are missing in baseline).
+
+```{r, fig.cap = "Correlation coefficients for pairwise correlations of all protein measurements from baseline and NAFLD per participant."}
+plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
+     ylab = "rho", xlab = "rank", main = "Participants")
+grid()
+```
+
+Correlation of values between baseline and NAFLD are highly correlated. As
+examples we plot below the values for the best and worst correlating
+participant.
+
+```{r}
+par(mfrow = c(1, 2))
+
+i <- which.max(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+i <- which.min(tmp$rho)
+plot(log2(a[i, ]), log2(b[i, ]),
+     xlab = expression(log[2]~baseline),
+     ylab = expression(log[2]~NAFLD), pch = 21,
+     col = "#00000080", bg = "#00000040")
+grid()
+abline(0, 1)
+
+```
+
+
+# Session Information
+
+```{r}
+sessionInfo()
+```
+
+# References
