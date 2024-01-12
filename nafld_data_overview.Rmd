@@ -6,6 +6,7 @@ output:
   BiocStyle::html_document:
     toc_float: true
     code_folding: hide
+bibliography: references.bib
 ---
 
 ```{r, echo = FALSE}
@@ -74,7 +75,7 @@ gender and then by case/control definition.
 n_anthro <- nafldData("anthro")
 rownames(n_anthro) <- n_anthro$AID
 
-n_data$BMI <- n_anthro[n_data$AID, "naan03"]
+n_data$BMI <- n_anthro[n_data$AID, "naan03a"]
 n_data$body_fat <- n_anthro[n_data$AID, "naan04"]
 n_data$visc_fat <- n_anthro[n_data$AID, "naan05"]
 
@@ -361,7 +362,7 @@ Glucose levels can be affected by the (missing) fasting status. Thus we next
 evaluate glucose levels in participants with or without self-reported fasting
 (and no drinking).
 
-```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status."}
+```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status.", fig.width = 12, fig.height = 5}
 library(beeswarm)
 
 par(mfrow = c(1, 2))
@@ -490,7 +491,7 @@ data.frame(status = c("No", "Yes"),
 Below we evaluate the data for participants for which the diagnosed T2B differs
 between baseline and NAFLD collection.
 
-```{r}
+```{r, results = "asis"}
 sel <- n_data$t2d != n_data$chris_t2d
 tmp <- n_data[sel, ]
 tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
@@ -504,7 +505,11 @@ glycated hemoglobin values are below the cut-off of 6.5% in NAFLD while they do
 have higher levels in CHRIS baseline.
 
 - [ ] TODO: check instruments between baseline and NAFLD study - was there a
-      change?
+      change that could explain differences in HbA1c?
+- [ ] TODO [Essi]: check if there was difference in lifestyle or nutrition
+      between baseline and NAFLD.
+- [ ] TODO: reach out to Martin, what is his opinion on that?
+- [ ] TODO: discuss with Christoph, what is his opinion on that?
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
 without T2D.
@@ -547,13 +552,337 @@ grid()
 
 Again, participants with T2D have on average higher visceral fat.
 
-```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without T2D."}
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without T2D."}
 vioplot(split(n_data$fib4, f), main = "FIB4/T2D",
         ylab = expression(FIB4))
 grid()
 ```
 
 FIB4 values are higher for participants without T2D.
+
+
+# Classification of steatosis in MASLD/NAFLD
+
+Clinical diagnosis of metabolic dysfunction associated steatotic liver disease
+(MASLD [@rinella_multisociety_2024], formerly NAFLD
+[@european_association_for_the_study_of_the_liver_easl_easl-easd-easo_2016])
+is based on a range of parameters:
+
+1) Presence of steatotic liver disease: sonographic evaluation, steatose score
+   of 2 - 3.
+
+2) Presence of cardiometabolic risk factors/criteria (at least one out of 5):
+   a) BMI >= 25 OR waist circumference > 94 (M) 80 (F) cm.
+   b) Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+      treatment for type 2 diabetes.
+   c) Blood pressure >= 130/85 mmHg OR specific antihypertensive drug treatment.
+   d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+   e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+3) Rule out alcoholic liver disease. Alcohol consumption > 40g/day (one
+   *standard drink* is 10g alcohol).
+
+This diagnosis includes also metabolic syndrome (MetS) which is diagnosed based
+on the presence of 3 risk factors:
+
+- (must have): central obesity (WC >= 94 (M) >= 80 (F) cm.
+- (two out of four):
+  - TG >= 150 mg/dl OR specific treatment for this lipid abnormality (**d**).
+  - HDL < 40 (M) 50 (F) mg/dl OR specific treatment for this lipid abnormality
+    (**e**).
+  - systolic BP >= 130 or diastolic >= 85 mmHG OR treatment for hypertension
+    (**c**).
+  - fasting glucose >= 100 mg/dl OR diagnosed T2D (**b**).
+
+Below we perform the diagnosis based on the above criteria.
+
+Presence of steatotic liver disease.
+
+```{r}
+#' steatose score: naab14, visual scoring of liver fat.
+n_data$SLD <- n_data$visual_fat > 1
+summary(n_data$SLD)
+```
+
+**a)** BMI >= 25 or waist circumference > 94 (M) 80 (F) cm.
+
+```{r}
+#' Waist circumference
+n_data$waist_circumference <- n_anthro[n_data$AID, "naan12"]
+#' Classify
+n_data$cardiometabolic_a <-
+    n_data$BMI >= 25 |
+    (n_data$waist_circumference >= 94 & n_data$na_sex == "Male") |
+    (n_data$waist_circumference >= 80 & n_data$na_sex == "Female")
+```
+
+A quite large proportion of participants fulfill this criteria - also maybe not
+unexpected based on the selection criteria for study participants.
+
+**b)** Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+treatment for type 2 diabetes (already included in the diagnosis of T2D
+performed in the previous section).
+
+```{r}
+#' Classify
+n_data$cardiometabolic_b <-
+    n_data$glucose >= 100 |
+    n_data$HbA1c > 5.7 |
+    n_data$t2d
+```
+
+**c)** Blood pressure >= 130/85 mmHg OR specific antihypertensive drug
+treatment.
+
+```{r}
+#' Add blood pressure measurements.
+n_data$systolic_bp <- n_anthro[n_data$AID, "nabp01"] # systolic BP [mm/Hg]
+n_data$diastolic_bp <- n_anthro[n_data$AID, "nabp02"] # diastolic BP [mm/Hg]
+n_data$systolic_bp[n_data$systolic_bp < 0] <- NA_real_
+n_data$diastolic_bp[n_data$diastolic_bp < 0] <- NA_real_
+#' Add blood pressure lowering therapy
+n_data$pb_med <- med$nadd20 # blood pressure lowering agents
+#' Classify
+n_data$cardiometabolic_c <-
+    n_data$systolic_bp >= 130 |
+    n_data$diastolic_bp >= 85 |
+    n_data$pb_med == "Yes"
+```
+
+**d)** Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+
+```{r}
+#' triglycerides [mg/dl]
+n_data$triglycerides <- lab[n_data$AID, "nalp19"]
+n_data$lm_med <- med$nadd22 # lipid modifying agents
+n_data$ms_med <- med$nadd23 # metabolic syndrome medication
+#' Classify
+n_data$cardiometabolic_d <-
+    n_data$triglycerides >= 150 |
+    n_data$lm_med == "Yes"
+```
+
+**e)** HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+```{r}
+#' HDL [mg/dl]: nalp17
+n_data$HDL <- lab[n_data$AID, "nalp17"]
+#' Classify
+n_data$cardiometabolic_e <-
+    (n_data$HDL <= 40 & n_data$na_sex == "Male") |
+    (n_data$HDL <= 50 & n_data$na_sex == "Female") |
+    n_data$lm_med == "Yes"
+```
+
+Summary of the numbers of numbers of cases for each sub-criteria is provided
+below.
+
+```{r, results = "asis"}
+cardiom <- n_data[, c("cardiometabolic_a", "cardiometabolic_b",
+                      "cardiometabolic_c", "cardiometabolic_d",
+                      "cardiometabolic_e")]
+lapply(cardiom, summary) |>
+    do.call(what = rbind) |>
+    pandoc.table(
+        style = "rmarkdown",
+        caption = paste0("Number of cases for each cardiometabolic sub-criteria"))
+
+```
+
+Most participants scored positive in subcategories **c** (hypertension) and
+**a** (BMI and waist circumference). We visually inspect the overlap between the
+sub-criteria also with an upset plot.
+
+```{r, caption = "Overview and overlap of participants scoring positive in the individual cardiometabolic sub-criteria."}
+library(UpSetR)
+cardiom <- as.data.frame(lapply(cardiom, as.integer))
+upset(cardiom, order.by = "degree")
+```
+
+A high number of participants score positive in all sub-criteria.
+
+At last we combine the scores from the sub-criteria to diagnose MASLD based on
+the criteria 1) and 2) from the definition. Criteria 3), related to alcohol
+consumption will be evaluated later.
+
+1) Presence of steatotic liver disease: sonographic evaluation, steatose score
+   of 2 - 3.
+
+2) Presence of cardiometabolic risk factors/criteria (at least one out of 5):
+   a) BMI >= 25 OR waist circumference > 94 (M) 80 (F) cm.
+   b) Fasting glucose >= 100 mg/dl OR HbA1c >= 5.7% OR type 2 diabetes OR
+      treatment for type 2 diabetes.
+   c) Blood pressure >= 130/85 mmHg OR specific antihypertensive drug treatment.
+   d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
+   e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
+
+```{r}
+#' MASLD:
+#' - steatotic liver disease
+#' - one out of 5 of a), b), c), d) and e)
+n_data$MASLD <-
+    n_data$SLD &
+    rowSums(n_data[, c("cardiometabolic_a", "cardiometabolic_b",
+                       "cardiometabolic_c", "cardiometabolic_d",
+                       "cardiometabolic_e")], na.rm =TRUE) > 0
+summary(n_data$MASLD)
+```
+
+The MASLD positive/negative cases are thus almost balanced in the present
+study. Also, maybe interesting, there were in total `r sum(n_data$SLD)`
+individuals scored positive for steatotic liver disease, but 2 of them did not
+fulfill the additional criteria for MASLD.
+
+Again, we next evaluate distribution of age, BMI, sex etc for participants with
+and without MASLD.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without MASLD."}
+f <- paste0(n_data$na_sex, n_data$MASLD)
+vioplot(split(n_data$na_ager, f), main = "Age/MASLD", ylab = "age [years]")
+grid()
+```
+
+Age distribution is about similar for female participants. For males, MASLD
+negative have an on average slightly higher age. We next evaluate the
+distribution of BMI values for MASLD positive/negative cases (again stratified
+by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$BMI, f), main = "BMI/MASLD", ylab = "BMI")
+grid()
+```
+
+Participants with MASLD have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without MASLD."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/MASLD",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with MASLD have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$visc_fat, f), main = "Visceral fat/MASLD",
+        ylab = expression(visceral~fat))
+grid()
+```
+
+Again, participants with MASLD have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without MASLD."}
+vioplot(split(n_data$fib4, f), main = "FIB4/MASLD",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without MASLD.
+
+At last we evaluate also the T2D cases with and without MASLD.
+
+```{r}
+table(n_data[, c("t2d", "MASLD")])
+```
+
+A higher proportion of participants with T2D score in addition also positive for
+MASLD.
+
+
+# Classification of Metabolic Syndrome
+
+Metabolic syndrome (MetS) is diagnosed based on the presence of 3 risk factors
+(and partially overlaps with the MASLD definition above):
+
+- (must have): central obesity (WC >= 94 (M) >= 80 (F) cm.
+- (two out of four):
+  - TG >= 150 mg/dl OR specific treatment for this lipid abnormality (**d**).
+  - HDL < 40 (M) 50 (F) mg/dl OR specific treatment for this lipid abnormality
+    (**e**).
+  - systolic BP >= 130 or diastolic >= 85 mmHG OR treatment for hypertension
+    (**c**).
+  - fasting glucose >= 100 mg/dl OR diagnosed T2D (**b**).
+
+```{r}
+n_data$MetS <-
+    ((n_data$waist_circumference >= 94 & n_data$na_sex == "Male") |
+     (n_data$waist_circumference >= 80 & n_data$na_sex == "Female")) &
+    rowSums(n_data[, c("cardiometabolic_b", "cardiometabolic_c",
+                       "cardiometabolic_d", "cardiometabolic_e")],
+            na.rm =TRUE) > 1
+```
+
+The overlap between participants with metabolic syndrome and MASLD are shown
+below.
+
+```{r}
+table(n_data[, c("MetS", "MASLD")])
+```
+
+For the biggest part, individuals with MetS are also positive for MASLD. On the
+other side, also a quite large proportion of individuals are classified to have
+MASLD but are not positive for MetS. Most T2D positive cases score also positive
+for MetS (see below).
+
+```{r}
+table(n_data[, c("t2d", "MetS")])
+```
+
+Again, we next evaluate distribution of age, BMI, sex etc for participants with
+and without MetS.
+
+```{r, fig.cap = "Age distribution for female and male study participants with and without MetS."}
+f <- paste0(n_data$na_sex, n_data$MetS)
+vioplot(split(n_data$na_ager, f), main = "Age/MetS", ylab = "age [years]")
+grid()
+```
+
+For females the average age of MetS positive cases is higher while for male
+participant the opposite effect can be observed. We next evaluate the
+distribution of BMI values for MetS and control (again stratified by sex).
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without MetS."}
+vioplot(split(n_data$BMI, f), main = "BMI/MetS", ylab = "BMI")
+grid()
+```
+
+Participants with MetS have a consistently higher BMI, both in female and male
+participants. We next evaluate the liver stiffness measurements (removing
+measurements that don't fulfill the quality requirements).
+
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without MetS."}
+lstiff <- n_data$liver_stiffness
+lstiff[n_data$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), f), main = "liver stiffness/MetS",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+```
+
+Participants with MetS have slightly higher liver stiffness measurements than
+those without. This might however be a consequence of their higher BMI.
+
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without MetS."}
+tmp <- split(n_data$visc_fat, f)
+tmp <- lapply(tmp, function(z) z[!is.na(z)])
+tmp <- tmp[lengths(tmp) > 0]
+vioplot(tmp, main = "Visceral fat/MetS",
+        ylab = expression(visceral~fat))
+grid()
+```
+
+Again, participants with MetS have on average higher visceral fat.
+
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without MetS."}
+vioplot(split(n_data$fib4, f), main = "FIB4/MetS",
+        ylab = expression(FIB4))
+grid()
+```
+
+FIB4 values are higher for participants without MetS.
 
 
 
@@ -856,3 +1185,5 @@ abline(0, 1)
 ```{r}
 sessionInfo()
 ```
+
+# References
