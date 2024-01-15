@@ -313,6 +313,10 @@ chris_med <- chrisData("drugs_summary")
 rownames(chris_med) <- chris_med$AID
 chris_med <- chris_med[n_data$aid_chris, ]
 
+chris_gi <- chrisData("general")
+rownames(chris_gi) <- chris_gi$AID
+chris_gi <- chris_gi[n_data$aid_chris, ]
+
 chris_int <- chrisData("interview")
 rownames(chris_int) <- chris_int$AID
 chris_int <- chris_int[n_data$aid_chris, ]
@@ -502,14 +506,68 @@ tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
 All these participants were diagnosed with T2D based on CHRIS baseline data, but
 not with data from the NAFLD collection. For all these participants the percent
 glycated hemoglobin values are below the cut-off of 6.5% in NAFLD while they do
-have higher levels in CHRIS baseline.
+have higher levels in CHRIS baseline. Note that all HbA1c measurements in
+baseline, for the NAFLD participants were done on a Tosoh Automated
+Glycohemoglobin Analyzer HLC-723 G8 (TOSOH CORPORATION SHIBA-KOEN FIRST BLDG)
+while the instrument was changed on 2015-05-15 to a ARKRAY ADAMS A1c HA-8180V
+instrument (hence all measurements in the NAFLD study were performed on that
+instrument).
 
-- [ ] TODO: check instruments between baseline and NAFLD study - was there a
+Below we compare the HbA1c measurements from the two instruments to evaluate
+whether there was an (apparent) systematic shift.
+
+```{r, fig.cap = "HbA1c concentrations (%) quantified using the old (FALSE) and new (TRUE) instrument."}
+tmp <- chrisData("lab")
+rownames(tmp) <- tmp$AID
+tmp_gi <- chrisData("general")
+rownames(tmp_gi) <- tmp_gi$AID
+tmp_gi <- tmp_gi[rownames(tmp), ]
+hba1c <- tmp$x0lp06a
+inst_cat <- tmp_gi$x0_examd > as.Date("2015-05-15")
+
+vioplot(split(hba1c, inst_cat), ylab = "HbA1c [%]",
+        main = "Glycohemoglobin before and after 2015-05-15")
+grid()
+abline(h = 6.5)
+```
+
+The average percentage of HbA1c quantified on the *old* instrument was higher
+than on the new instrument.
+
+The number of participants (in CHRIS baseline) with an HbA1c concentration
+higher than 6.5% per instrument are shown below.
+
+```{r, results = "asis"}
+after <- hba1c[inst_cat]
+before <- hba1c[!inst_cat]
+
+#' Test mean scaling...
+#' before <- before * mean(after, na.rm = TRUE) / mean(before, na.rm = TRUE)
+
+data.frame(instrument = c("A", "B"),
+           total_count = c(length(before), length(after)),
+           higher_6.5 = c(sum(before > 6.4, na.rm = TRUE),
+                          sum(after > 6.4, na.rm = TRUE))) |>
+    pandoc.table(
+        style = "rmarkdown",
+        caption = paste0("Number of measurements performed with the old (A), ",
+                         "or new (B) instrument and number of participants ",
+                         "with a HbA1c > 6.5%."))
+
+vioplot(list(before, after))
+grid()
+```
+
+Indeed, it looks like we might have a problem here! About twice as many
+participants have elevated HbA1c levels on the old instrument.
+
+- [X] DONE: check instruments between baseline and NAFLD study - was there a
       change that could explain differences in HbA1c?
 - [ ] TODO [Essi]: check if there was difference in lifestyle or nutrition
       between baseline and NAFLD.
 - [ ] TODO: reach out to Martin, what is his opinion on that?
 - [ ] TODO: discuss with Christoph, what is his opinion on that?
+- [ ] TODO: how to normalize the values.
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
 without T2D.
