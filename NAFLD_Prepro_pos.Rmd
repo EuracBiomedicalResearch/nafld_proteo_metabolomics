@@ -405,7 +405,7 @@ processingChunkSize(nafld@spectra) <- Inf
 ```
 
 ```{r}
-save(nafld, file = "after_visu.RData")
+save(nafld, file = "nafld_after_visu.RData")
 ```
 
 # Preprocessing
@@ -770,6 +770,7 @@ sample.
 ```{r alignment_using_selected_standards}
 #' creating matrix for rt alignment
 standard <- read.delim("Mix_alignment.txt", comment.char = "#")
+standard <- standard[order(standard$RT),]
 
 #' loop results
 ID_table <- matrix(
@@ -1127,7 +1128,7 @@ save(nafld, file = "nafld_after_alignment.RData")
 #' Updating parameters
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type[pool_index],
-    minFraction = 0.5, binSize = 0.015, bw = 2.1)
+    minFraction = 0.5, binSize = 0.015, bw = 2)
 
 
 plotChromPeakDensity(
@@ -1170,7 +1171,7 @@ be `0.01 + ppm(1000, ppm = 10)` which is equal to 0.02.
 ##                           minFraction = 0.3, binSize = 0.015, bw = 2)
 param <- PeakDensityParam(sampleGroups = sampleData(nafld)$sample_type,
                           minFraction = 0.3, binSize = 0.01, ppm = 10,
-                          bw = 2.1)
+                          bw = 2)
 nafld <- groupChromPeaks(nafld, param = param)
 
 #' Extract pool_sample for better visualization of analysis

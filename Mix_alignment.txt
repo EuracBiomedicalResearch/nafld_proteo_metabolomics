@@ -27,3 +27,5 @@
 "glycero_phosphocholine"	"Glycero-phosphocholine"	"glycero_phosphocholine"	"257.10282"	"[M+H]+"	"[M+Cl]-"	189	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	258.110096	258.090096	258.130096	174	204
 "cystine_13C_15N"	"L-Cystine (13C6, 99%; 15N2, 99%)"	"cystine_13C_15N"	"248.038"	"[M+H]+"	"[M-H]-"	208	"2019_11_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"0_perfect"	249.045276	249.025276	249.065276	193	223
 "cystine"	"Cystine"	"cystine"	"C6H12N2O4S2"	"[M+H]+"	"[M-H]-"	209	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"0_perfect"	"1_good"	241.031124864	241.011124864	241.051124864	196	226
+"ADMA"	"ADMA"	"ADMA"	"C8H18N4O2"	"[M+H]+"	"[M-H]-"	172	"2020_01_matrix_effect"	"serum"	"Mar Garcia-Aloy"	2	"1_good"	"1_good"	203.150252	203.140252	203.160252	157	187
+
