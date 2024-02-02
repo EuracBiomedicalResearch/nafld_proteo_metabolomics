@@ -314,8 +314,8 @@ standards_all$mz <- mapply(standards_all$mass,
                            FUN = mass2mz)
 
 #' Fit for each standards
-standards_all$mzmin <- standards_all$mz - 0.02
-standards_all$mzmax <- standards_all$mz + 0.02
+standards_all$mzmin <- standards_all$mz - 0.01
+standards_all$mzmax <- standards_all$mz + 0.01
 standards_all$rtmin <- standards_all$RT - 15
 standards_all$rtmax <- standards_all$RT + 15
 
@@ -405,7 +405,7 @@ processingChunkSize(nafld@spectra) <- Inf
 ```
 
 ```{r}
-save(nafld, file = "after_visu.RData")
+save(nafld, file = "nafld_after_visu.RData")
 ```
 
 # Preprocessing
@@ -589,12 +589,15 @@ dir.create(dr, recursive = TRUE, showWarnings = FALSE)
 for (i in seq_len(nrow(intern_standard))) {
     png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    plot(eics[i], main =intern_standard$name[i], col = paste0(batches_pool,80),
+    plot(eics[i], main = intern_standard$name[i], col = paste0(batches_pool,80),
          peakCol = col_batches[chromPeaks(eics[i])[, "sample"]],
          peakBg = paste0(col_batches[chromPeaks(eics[i])[, "sample"]], 40))
     grid()
     legend("topright", col = col_batch_id,
            legend = names(col_batch_id), lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eics)$mzmin[i], 4),
+                             " - ", format(fData(eics)$mzmax[i], 4)))
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -620,6 +623,9 @@ for (i in seq_len(nrow(standards_all))) {
            col = col_batch_id,
            legend = names(col_batch_id),
            lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eic)$mzmin, 4),
+                             " - ", format(fData(eic)$mzmax, 4)))
     abline(v = standards_all$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -642,7 +648,8 @@ grid()
 ```{r refine_chrom_peaks,  message = FALSE, eval = !file.exists("nafld_after_refine.RData")}
 #' set up the parameter
 param <- MergeNeighboringPeaksParam(expandRt = 5,
-                                    expandMz = 0.01,
+                                    expandMz = 0.001,
+                                    ppm = 5,
                                     minProp = 0.75)
 #' apply to all dataset
 nafld <- refineChromPeaks(nafld, param = param, chunkSize = 10)
@@ -681,6 +688,9 @@ for (i in seq_len(nrow(intern_standard))) {
     grid()
     legend("topright", col = col_batch_id,
            legend = names(col_batch_id), lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eic)$mzmin, 4),
+                           " - ", format(fData(eic)$mzmax, 4)))
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -706,6 +716,9 @@ for (i in seq_len(nrow(standards_all))) {
            col = col_batch_id,
            legend = names(col_batch_id),
            lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eic)$mzmin, 4),
+                             " - ", format(fData(eic)$mzmax, 4)))
     abline(v = standards_all$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -757,6 +770,7 @@ sample.
 ```{r alignment_using_selected_standards}
 #' creating matrix for rt alignment
 standard <- read.delim("Mix_alignment.txt", comment.char = "#")
+standard <- standard[order(standard$RT),]
 
 #' loop results
 ID_table <- matrix(
@@ -768,13 +782,6 @@ ID_table <- matrix(
 cpks <- as.data.frame(chromPeaks(nafld))
 cpks$peak_id <- rownames(cpks)
 
-#' Keep only matches with highest intensity
-rem_dups <- function(x) {
-    if (nrow(matches(x)) > 1)
-        filterMatches(x, index = which.max(x$target_maxo))
-    else x
-}
-
 #' get ID for peaks matching with IS for each samples (minus Blanks)
 for (i in which(sampleData(nafld)$sample_type != "Blank")) {
     tmp <- cpks[cpks$sample == i, ]
@@ -784,8 +791,11 @@ for (i in which(sampleData(nafld)$sample_type != "Blank")) {
         mzColname = c("mz", "mz"),
         rtColname = c("RT", "rt" ),
         param = MzRtParam(ppm = 0, tolerance = 0.01, toleranceRt = 10))
-    match_intern_standard <- MetaboAnnotation::endoapply(match_intern_standard,
-                                                         FUN = rem_dups)
+    #' Select the chrom peak with the largest apex signal
+    match_intern_standard <- filterMatches(
+        match_intern_standard, SingleMatchParam(duplicates = "top_ranked",
+                                                decreasing = TRUE,
+                                                column = "target_maxo"))
     ID_table[, i] <- match_intern_standard$target_peak_id
 }
 
@@ -826,8 +836,10 @@ for (i in which(sampleData(nafld)$sample_type != "Blank")) {
         mzColname = c("mz", "mz"),
         rtColname = c("RT", "rt" ),
         param = MzRtParam(ppm = 0, tolerance = 0.01, toleranceRt = 10))
-    match_standard <- MetaboAnnotation::endoapply(match_standard,
-                                                  FUN = rem_dups)
+    match_standard <- filterMatches(
+        match_standard, SingleMatchParam(duplicates = "top_ranked",
+                                         decreasing = TRUE,
+                                         column = "target_maxo"))
     standards_all_cpeaks[, i] <- match_standard$target_peak_id
 }
 
@@ -849,8 +861,6 @@ less well.
 #' Subset to all samples except blanks
 is_blank <- sampleData(nafld)$sample_type == "Blank"
 final_table <- RT_raw[, !is_blank]
-
-## final_table <- RT_raw[, pool_index]
 
 #' Order by median RT
 final_table <- final_table[order(rowMedians(final_table, na.rm = TRUE)), ]
@@ -1049,6 +1059,9 @@ for (i in seq_len(nrow(intern_standard))) {
     legend("topright", col = col_batch_id,
            legend = names(col_batch_id), lty = 1)
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eics)$mzmin[i], 4),
+                             " - ", format(fData(eics)$mzmax[i], 4)))
     dev.off()
 }
 
@@ -1071,6 +1084,9 @@ for (i in seq_len(nrow(intern_standard))) {
     legend("topright",
            col = col_phenotype,
            legend = names(col_phenotype), lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eics)$mzmin[i], 4),
+                             " - ", format(fData(eics)$mzmax[i], 4)))
     abline(v = intern_standard$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -1093,6 +1109,9 @@ for (i in seq_len(nrow(standards_all))) {
            col = col_batch_id,
            legend = names(col_batch_id),
            lty = 1)
+    legend("topleft",
+           legend = paste0("m/z: ", format(fData(eics_s)$mzmin[i], 4),
+                             " - ", format(fData(eics_s)$mzmax[i], 4)))
     abline(v = standards_all$RT[i], col = "red", lty = 3)
     dev.off()
 }
@@ -1106,7 +1125,7 @@ save(nafld, file = "nafld_after_alignment.RData")
 ## Correspondence
 
 ```{r}
-#'Updating parameters
+#' Updating parameters
 param <- PeakDensityParam(
     sampleGroups = sampleData(nafld)$sample_type[pool_index],
     minFraction = 0.5, binSize = 0.015, bw = 2)
@@ -1141,12 +1160,18 @@ legend("bottomright", col = col_batch_id, cex = 0.50,
 For the final correspondence we reduce the required proportion in which a
 chromatographic peak has to be present to 30% to ensure that features
 representing metabolites present also in only a subset of study samples would be
-defined/present.
+defined/present. Also, we use m/z-dependent bin sizes (i.e., m/z bins increase
+by `ppm` along the m/z dimension). For this we reduce in addition the `binSize`
+from 0.015 to 0.01. Thus, the final (largest) bin size for an m/z of 1000 will
+be `0.01 + ppm(1000, ppm = 10)` which is equal to 0.02.
 
 ```{r perform_correspondence}
 #' Now apply to whole data
+## param <- PeakDensityParam(sampleGroups = sampleData(nafld)$sample_type,
+##                           minFraction = 0.3, binSize = 0.015, bw = 2)
 param <- PeakDensityParam(sampleGroups = sampleData(nafld)$sample_type,
-                          minFraction = 0.3, binSize = 0.015, bw = 2)
+                          minFraction = 0.3, binSize = 0.01, ppm = 10,
+                          bw = 2)
 nafld <- groupChromPeaks(nafld, param = param)
 
 #' Extract pool_sample for better visualization of analysis
@@ -1164,7 +1189,7 @@ chr_test <- chromatogram(nafld, mz = met_mz + c(-0.01, 0.01),
 plotChromPeakDensity(chr_test, col = paste0(col_batches, 80),
     peakCol = paste0(col_batches[chromPeaks(chr_test)[, "sample"]], 80),
     peakBg = paste0(col_batches[chromPeaks(chr_test)[, "sample"]], 20),
-    peakPch = 16)
+    peakPch = 16, simulate = FALSE)
 legend("bottomright", col = col_batch_id, cex = 0.50,
        horiz = TRUE,inset = c(0, -0.5), xpd = TRUE,
        text.width = 4, bty = "n",
@@ -1175,82 +1200,182 @@ legend("bottomright", col = col_batch_id, cex = 0.50,
 save(nafld, file = "nafld_after_correspondence.RData")
 ```
 
-```{r eics_after_correspondence_standards}
-#' Correspondence results for all standards. This call takes way to long,
-#' can only be fixed by a new result object, i.e. Chromatograms.
-eics_s <- chromatogram(nafld,
-                       mz = as.matrix(standards_all[, c("mzmin", "mzmax")]),
-                       rt = as.matrix(standards_all[, c("rtmin", "rtmax")]),
-                       chunkSize = 10)
+Correspondence defined in total `r nrow(featureDefinitions(nafld))`
+features. Below we evaluate the m/z (and rt) widths of the identified features.
 
+```{r}
+#' Define the m/z and rt widths considering the apex position.
+apex_mzw <- featureDefinitions(nafld)$mzmax - featureDefinitions(nafld)$mzmin
+apex_rtw <- featureDefinitions(nafld)$rtmax - featureDefinitions(nafld)$rtmin
+#' Define the m/z and rt widths considering the full chrom peak ranges.
+feature_area <- featureArea(
+    nafld, features = rownames(featureDefinitions(nafld)))
+full_mzw <- feature_area[, "mzmax"] - feature_area[, "mzmin"]
+full_rtw <- feature_area[, "rtmax"] - feature_area[, "rtmin"]
+```
+
+The distribution of m/z widths for all features is:
+
+```{r}
+quantile(apex_mzw)
+```
+
+The distribution of rt widths for all features is:
+
+```{r}
+quantile(apex_rtw)
+```
+
+We first evaluate the rt and m/z widths of features considering the apex
+positions of all chrom peaks of a feature.
+
+```{r, fig.cap = "Features' median retention time against rt widths (for the apex position of chrom peaks) and features' median m/z against m/z width (of apex)."}
+par(mfrow = c(1, 2))
+plot(featureDefinitions(nafld)$rtmed, apex_rtw, xlab = "rt",
+     ylab = "rt width", main = "chrom peak apex", pch = 21,
+     col = "#00000040", bg = "#00000020")
+grid()
+plot(featureDefinitions(nafld)$mzmed, apex_mzw, xlab = "m/z",
+     ylab = "m/z width", main = "chrom peak apex", pch = 21,
+     col = "#00000040", bg = "#00000020")
+grid()
+```
+
+In the early LC, retention time widths seem to be on average lower than in the
+middle and at the end of the LC. For features' m/z widths there is a clear
+dependency on the median m/z, which is due to the settings in the correspondence
+analysis that uses m/z dependent bin sizes for the correspondence.
+
+We next evaluate the rt and m/z widths of features considering the full range of
+m/z and rt values of all chromatographic peaks of a feature. The distribution
+for the full m/z range of all chromatographic peaks per feature is:
+
+```{r}
+quantile(full_mzw)
+```
+
+And the full rt width of all chromatographic peaks per feature:
+
+```{r}
+quantile(full_rtw)
+```
+
+```{r, fig.cap = "Features' median retention time against rt widths (of all chrom peaks) and features' median m/z against m/z width (of all peaks)."}
+par(mfrow = c(1, 2))
+plot(featureDefinitions(nafld)$rtmed, full_rtw, xlab = "rt",
+     ylab = "rt width", main = "full chrom peak range", pch = 21,
+     col = "#00000040", bg = "#00000020")
+grid()
+plot(featureDefinitions(nafld)$mzmed, full_mzw, xlab = "m/z",
+     ylab = "m/z width", main = "full chrom peak range", pch = 21,
+     col = "#00000040", bg = "#00000020")
+grid()
+```
+
+The full m/z range of all chromatographic peaks per feature is (not
+unexpectedly) much larger than the m/z range for the apex positions. Still, the
+magnitude of this m/z range is quite high.
+
+To evaluate the performance of the correspondence analysis we first identify
+features for each of the standards, extract their EIC and plot them.
+
+```{r}
+#' Identify features for standards, extract and plot them. The difference
+#' here to the next code block (in which EICs are extracted using m/z and
+#' rt ranges) is that here we are specifically matching features to standards
+#' and are extracting the EIC for these features only (with
+#' featureChromatograms)
+#'
+#' match standards to identified features.
+fts <- featureDefinitions(nafld)
+fts$feature_id <- rownames(fts)
+standards_all_match <- matchValues(
+    query = standards_all, target = fts,
+    mzColname = c("mz", "mzmed"), rtColname = c("RT", "rtmed" ),
+    param = MzRtParam(ppm = 10, tolerance = 0.01, toleranceRt = 7))
+
+#' Clean up:
+#' - remove all standards without match
+standards_all_match <- standards_all_match[whichQuery(standards_all_match)]
+#' - select for each standard the *best* match
+standards_all_match <- filterMatches(
+    standards_all_match, SingleMatchParam(duplicates = "closest"))
+
+#' Extract EICs for these features.
+standards_all_eic <- featureChromatograms(
+    nafld, features = standards_all_match$target_feature_id,
+    expandRt = 2, chunkSize = 10)
+
+#' Plot the EICs
 dr <- "EIC_standard/full/after_correspondence/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
-
-#' For all standards.
-for (i in seq_len(nrow(standards_all))) {
-    png(paste0(dr, "EIC_", standards_all$abbreviation[i], ".png"),
+for (i in seq_along(standards_all_match)) {
+    png(paste0(dr, "EIC_", standards_all_match$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    eic <- eics_s[i, ]
-    if (hasFeatures(eic)) {
-        plotChromPeakDensity(
-            eic, main = standards_all$name[i],
-            col = paste0(col_batches, 80),
-            peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
-            peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
-            peakPch = 21)
-    } else {
-        plotChromPeakDensity(
-            eic, main = standards_all$name[i],
-            col = paste0(col_batches, 80),
-            peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
-            peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
-            peakPch = 21, param = param)
-    }
+    eic <- standards_all_eic[i, ]
+    plotChromPeakDensity(
+        eic, main = standards_all_match$name[i],
+        col = paste0(col_batches, 80),
+        peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
+        peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
+        peakPch = 21, simulate = FALSE)
     grid()
     legend("topright",
            col = col_batch_id,
            legend = names(col_batch_id),
            lty = 1)
-    abline(v = standards_all$RT[i], col = "red", lty = 3)
+    legend("topleft",
+           legend = c(paste0("m/z: ", format(fData(eic)$mzmin, 4),
+                             " - ", format(fData(eic)$mzmax, 4)),
+                      paste0("feature: ", rownames(featureDefinitions(eic)))))
+    abline(v = standards_all_match$RT[i], col = "red", lty = 3)
     dev.off()
 }
 
 ```
 
+
+
 ```{r eics_after_correspondence_internal_standards}
-#' And for the internal standards.
-eics <- chromatogram(nafld,
-                     mz = as.matrix(intern_standard[, c("mzmin", "mzmax")]),
-                     rt = as.matrix(intern_standard[, c("rtmin", "rtmax")]),
-                     chunkSize = 10)
+intern_standard_match <- matchValues(
+    query = intern_standard, target = fts,
+    mzColname = c("mz", "mzmed"), rtColname = c("RT", "rtmed" ),
+    param = MzRtParam(ppm = 10, tolerance = 0.01, toleranceRt = 7))
+
+#' Clean up:
+#' - remove all standards without match
+intern_standard_match <- intern_standard_match[whichQuery(intern_standard_match)]
+#' - select for each standard the *best* match
+intern_standard_match <- filterMatches(
+    intern_standard_match, SingleMatchParam(duplicates = "closest"))
+
+#' Extract EICs for these features.
+intern_standard_eic <- featureChromatograms(
+    nafld, features = intern_standard_match$target_feature_id,
+    expandRt = 2, chunkSize = 10)
 
 dr <- "EIC_IS/full/after_correspondence/"
 dir.create(dr, recursive = TRUE, showWarnings = FALSE)
-for (i in seq_len(nrow(intern_standard))) {
-    png(paste0(dr, "EIC_", intern_standard$abbreviation[i], ".png"),
+for (i in seq_along(intern_standard_match)) {
+    png(paste0(dr, "EIC_", intern_standard_match$abbreviation[i], ".png"),
         width = 12, height = 8, units = "cm", res = 600, pointsize = 4)
-    eic <- eics[i, ]
-    if (hasFeatures(eic)) {
-        plotChromPeakDensity(
-            eic, main = intern_standard$name[i],
-            col = paste0(col_batches, 80),
-            peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
-            peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
-            peakPch = 21)
-    } else {
-        plotChromPeakDensity(
-            eic, main = intern_standard$name[i],
-            col = paste0(col_batches, 80),
-            peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
-            peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
-            peakPch = 21, param = param)
-    }
+    eic <- intern_standard_eic[i, ]
+    plotChromPeakDensity(
+        eic, main = intern_standard_match$name[i],
+        col = paste0(col_batches, 80),
+        peakCol = paste0(col_batches[chromPeaks(eic)[, "sample"]], 80),
+        peakBg = paste0(col_batches[chromPeaks(eic)[, "sample"]], 20),
+        peakPch = 21, simulate = FALSE)
     grid()
     legend("topright",
            col = col_batch_id,
            legend = names(col_batch_id),
            lty = 1)
-    abline(v = intern_standard$RT[i], col = "red", lty = 3)
+    legend("topleft",
+           legend = c(paste0("m/z: ", format(fData(eic)$mzmin, 4),
+                             " - ", format(fData(eic)$mzmax, 4)),
+                      paste0("feature: ", rownames(featureDefinitions(eic)))))
+    abline(v = intern_standard_match$RT[i], col = "red", lty = 3)
     dev.off()
 }
 

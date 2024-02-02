@@ -1,6 +1,6 @@
 ---
 title: "Overview and characterization of the NAFLD substudy"
-author: "Johannes Rainer"
+author: "Johannes Rainer, Essi Hantikainen"
 graphics: yes
 output:
   BiocStyle::html_document:
@@ -22,7 +22,7 @@ for participants of the NAFLD sub-study of CHRIS. In addition, we
 stratify/diagnose individuals following recent clinical guidelines.
 
 
-# NAFLD data
+# Data overview
 
 Demographics of the NAFLD cohort and evaluation of available trait data.
 
@@ -67,8 +67,8 @@ grid()
 ```
 
 The time span between the two studies is thus between 2 to 5 years. We next
-evaluate BMI and fat composition for the study participants, first split by
-gender and then by case/control definition.
+evaluate BMI and fat composition for the study participants, split by
+sex.
 
 ```{r}
 #' BMI, fat etc.
@@ -81,8 +81,8 @@ n_data$visc_fat <- n_anthro[n_data$AID, "naan05"]
 
 ```
 
-```{r, fig.cap = "Distribution of BMI and body fat per sex or *case*."}
-par(mfrow = c(2, 3))
+```{r, fig.cap = "Distribution of BMI and body fat per sex."}
+par(mfrow = c(1, 3))
 #' split by sex
 vioplot(split(n_data$BMI, n_data$na_sex), main = "BMI", ylab = "BMI")
 grid()
@@ -92,23 +92,12 @@ grid()
 vioplot(split(n_data$visc_fat, n_data$na_sex), main = "Visceral fat",
         ylab = "Visceral fat")
 grid()
-#' split by case
-vioplot(split(n_data$BMI, n_data$case), main = "BMI", ylab = "BMI")
-grid()
-vioplot(split(n_data$body_fat, n_data$case), main = "Body fat",
-        ylab = "Body fat")
-grid()
-vioplot(split(n_data$visc_fat, n_data$case), main = "Visceral fat",
-        ylab = "Visceral fat")
-grid()
 
 ```
 
 While the distribution of the BMI is balanced between female and male
 participants, females have on average a much higher body fat percentage, while
-males have on average a higher proportion of visceral fat. For cases and
-controls (defined for the recruitment of CHRIS participants) on average higher
-BMI, body fat and visceral fat can be observed for *cases*.
+males have on average a higher proportion of visceral fat.
 
 Note that there seems to be no dependency between age and BMI in the present
 data set (data not shown).
@@ -152,13 +141,10 @@ have a liver stiffness IQR `>= 30`.
 At first we evaluate the distribution of the liver stiffness score in the data
 set.
 
-```{r, fig.cap = "Distribution of liver stiffness measurements. All values considered. Problematic values are highlighted in red in the lower panel.", fig.height = 10}
+```{r, fig.cap = "Distribution of liver stiffness measurements. All values considered. Problematic values are highlighted in red in the lower panel."}
 stiff_ok <- which(n_data$liver_stiffness_iqr < 30)
-par(mfrow = c(2, 2))
+par(mfrow = c(1, 3))
 vioplot(split(log2(n_data$liver_stiffness), n_data$na_sex),
-        main = "Liver stiffness", ylab = expression(log[2](Liver~stiffness)))
-grid()
-vioplot(split(log2(n_data$liver_stiffness), n_data$case),
         main = "Liver stiffness", ylab = expression(log[2](Liver~stiffness)))
 grid()
 col <- rep("#ff0000", nrow(n_data))
@@ -179,19 +165,16 @@ abline(lm(y ~ x), lty = 1, col = "#00000080")
 ```
 
 While there is a clear average difference for liver stiffness between male and
-female as well as case and control cases, there seems to be no general age
-dependency of the liver stiffness. Only for a subset of participants there seems
-to be a (log linear) increase with age. In contrast, a (log-linear) relationship
-between BMI and liver stiffness can be observed.
+female participants, there seems to be no general age dependency of the liver
+stiffness. Only for a subset of participants there seems to be a (log linear)
+increase with age. In contrast, a (log-linear) relationship between BMI and
+liver stiffness can be observed.
 
 We next evaluate the distribution of liver fat values in the study cohort.
 
-```{r, fig.cap = "Distribution of liver fat values in the study cohort.", fig.height = 10}
-par(mfrow = c(2, 2))
+```{r, fig.cap = "Distribution of liver fat values in the study cohort."}
+par(mfrow = c(1, 3))
 vioplot(split(n_data$liver_fat, n_data$na_sex),
-        main = "Liver fat", ylab = "Liver fat")
-grid()
-vioplot(split(n_data$liver_fat, n_data$case),
         main = "Liver fat", ylab = "Liver fat")
 grid()
 x <- n_data$na_ager
@@ -208,19 +191,14 @@ abline(lm(y ~ x), lty = 1, col = "#00000080")
 ```
 
 Similar to the liver stiffness, we see differences in average liver fat values
-between male and female study participants as well as between cases and
-controls, while there seems no age dependency. A strong relationship between BMI
-and liver fat can be observed.
+between male and female study participants, while there seems no age
+dependency. A strong relationship between BMI and liver fat can be observed.
 
 For completeness we also plot the visual fat categorization.
 
-```{r, fig.cap = "Overview of visual fat categories.", fig.height = 10}
-par(mfrow = c(2, 2))
+```{r, fig.cap = "Overview of visual fat categories."}
+par(mfrow = c(1, 3))
 split(n_data$visual_fat, n_data$na_sex) |>
-    lapply(table) |>
-    do.call(what = cbind) |>
-    barplot()
-split(n_data$visual_fat, n_data$case) |>
     lapply(table) |>
     do.call(what = cbind) |>
     barplot()
@@ -237,12 +215,9 @@ well as BMI.
 
 Next we evaluate the FIB4 score.
 
-```{r, fig.cap = "Distribution of FIB4 scores.", fig.height = 10}
-par(mfrow = c(2, 2))
+```{r, fig.cap = "Distribution of FIB4 scores."}
+par(mfrow = c(1, 3))
 vioplot(split(log2(n_data$fib4), n_data$na_sex),
-        main = "FIB4", ylab = expression(log[2](FIB4)))
-grid()
-vioplot(split(log2(n_data$fib4), n_data$case),
         main = "FIB4", ylab = expression(log[2](FIB4)))
 grid()
 x <- n_data$na_ager
@@ -261,17 +236,13 @@ abline(lm(y ~ x), lty = 1, col = "#00000080")
 ```
 
 There seems to be only a small difference in average FIB4 values between male
-and female participants or between cases and controls. A strong (positive)
-relationship is however visible between FIB4 and age. A slight negative
-relationship seems to be present between FIB4 and BMI.
+and female participants. A strong (positive) relationship is however visible
+between FIB4 and age. A slight negative relationship seems to be present between
+FIB4 and BMI.
 
-```{r, fig.cap = "Overview of metabolic syndrome categories.", fig.height = 10}
-par(mfrow = c(2, 2))
+```{r, fig.cap = "Overview of metabolic syndrome categories."}
+par(mfrow = c(1, 3))
 split(n_data$metsym, n_data$na_sex) |>
-    lapply(table) |>
-    do.call(what = cbind) |>
-    barplot()
-split(n_data$metsym, n_data$case) |>
     lapply(table) |>
     do.call(what = cbind) |>
     barplot()
@@ -312,6 +283,10 @@ library(chrisData)
 chris_med <- chrisData("drugs_summary")
 rownames(chris_med) <- chris_med$AID
 chris_med <- chris_med[n_data$aid_chris, ]
+
+chris_gi <- chrisData("general")
+rownames(chris_gi) <- chris_gi$AID
+chris_gi <- chris_gi[n_data$aid_chris, ]
 
 chris_int <- chrisData("interview")
 rownames(chris_int) <- chris_int$AID
@@ -362,7 +337,7 @@ Glucose levels can be affected by the (missing) fasting status. Thus we next
 evaluate glucose levels in participants with or without self-reported fasting
 (and no drinking).
 
-```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status.", fig.width = 12, fig.height = 5}
+```{r, fig.cap = "Glucose concentrations for self-reported fasting (or no drinking) status.", fig.width = 12, fig.height = 6}
 library(beeswarm)
 
 par(mfrow = c(1, 2))
@@ -384,7 +359,7 @@ diagnosis. Thus, we below only consider glucose levels for participants that did
 not eat (self-reported) prior to the blood drawing.
 
 And we are next diagnosing the NAFLD study participants based on the clinical
-and medication information (ignoring the self-reported diagnosis).
+and medication information. We ignore the self-reported diagnosis.
 
 ```{r}
 #' Diagnosing in NAFLD
@@ -406,7 +381,8 @@ t2d[is.na(n_data$dia_med) & no_lab] <- NA
 n_data$t2d <- t2d
 ```
 
-The same criteria are applied to CHRIS baseline samples.
+The same criteria are applied to CHRIS baseline samples for the NAFLD study
+participants.
 
 ```{r}
 #' Diagnosing in CHRIS
@@ -457,9 +433,12 @@ data.frame(status = c("No", "Yes"),
            CHRIS_T2D = as.integer(table(n_data$chris_t2d)),
            NAFLD_SR_DM = as.integer(table(n_data$self_dm)),
            CHRIS_SR_DM = as.integer(table(n_data$chris_dm))) |>
-    pandoc.table(style = "rmarkdown",
-                 caption = paste0("Diabetes cases in CHRIS baseline and ",
-                                  "NAFLD, diagnosed and self-reported (SR)."))
+    pandoc.table(
+        style = "rmarkdown",
+        caption = paste0("Type 2 diabetes diagnosis for NAFLD study ",
+                         "participants based on data from the NAFLD study ",
+                         "(NAFLD) or CHRIS baseline samples (CHRIS). ",
+                         "Columns SR indicate self-reported diagnosis."))
 ```
 
 Surprisingly, the number of cases are higher in CHRIS baseline than in the NAFLD
@@ -488,10 +467,11 @@ data.frame(status = c("No", "Yes"),
                  caption = paste0("Diagnostic criteria in CHRIS."))
 ```
 
-Below we evaluate the data for participants for which the diagnosed T2B differs
-between baseline and NAFLD collection.
+Note that the 46 participants for whom the T2D diagnosis differs between
+baseline and NAFLD all have glycated hemoglobin percentages close to the cut-off
+(data not shown).
 
-```{r, results = "asis"}
+```{r, results = "asis", eval = FALSE}
 sel <- n_data$t2d != n_data$chris_t2d
 tmp <- n_data[sel, ]
 tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
@@ -499,17 +479,74 @@ tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
     pandoc.table(style = "rmarkdown", split.table = Inf)
 ```
 
-All these participants were diagnosed with T2D based on CHRIS baseline data, but
-not with data from the NAFLD collection. For all these participants the percent
-glycated hemoglobin values are below the cut-off of 6.5% in NAFLD while they do
-have higher levels in CHRIS baseline.
+HbA1c measurements were conducted on blood samples for all NAFLD participants on
+a Tosoh Automated Glycohemoglobin Analyzer HLC-723 G8 (TOSOH CORPORATION
+SHIBA-KOEN FIRST BLDG) while for the measurement on blood samples from the NAFLD
+samples the ARKRAY ADAMS A1c HA-8180V instrument was used (instrument change was
+performed 2015-05-15).
 
-- [ ] TODO: check instruments between baseline and NAFLD study - was there a
-      change that could explain differences in HbA1c?
-- [ ] TODO [Essi]: check if there was difference in lifestyle or nutrition
-      between baseline and NAFLD.
-- [ ] TODO: reach out to Martin, what is his opinion on that?
-- [ ] TODO: discuss with Christoph, what is his opinion on that?
+Below we compare the HbA1c measurements from the two instruments on the full
+CHRIS baseline collection to evaluate whether there was an (apparent) systematic
+shift.
+
+```{r, fig.cap = "CHRIS baseline. HbA1c concentrations (%) quantified using the old (FALSE) and new (TRUE) instrument."}
+tmp <- chrisData("lab")
+rownames(tmp) <- tmp$AID
+tmp_gi <- chrisData("general")
+rownames(tmp_gi) <- tmp_gi$AID
+tmp_gi <- tmp_gi[rownames(tmp), ]
+hba1c <- tmp$x0lp06a
+inst_cat <- tmp_gi$x0_examd > as.Date("2015-05-15")
+
+vioplot(split(hba1c, inst_cat), ylab = "HbA1c [%]",
+        main = "Glycohemoglobin before and after 2015-05-15")
+grid()
+abline(h = 6.5)
+```
+
+The average percentage of HbA1c quantified on the *old* instrument was higher
+than on the new instrument. The distribution (quantiles) is shown below.
+
+```{r}
+after <- hba1c[inst_cat]
+before <- hba1c[!inst_cat]
+
+quantile(before, na.rm = TRUE)
+quantile(after, na.rm = TRUE)
+```
+
+The mean concentrations before the instrument changes were
+
+`r format(mean(before, na.rm = TRUE), digits = 2)`
+
+and after the change
+
+`r format(mean(after, na.rm = TRUE), digits = 2)`.
+
+The number of participants (in CHRIS baseline) with an HbA1c concentration
+higher than 6.5% per instrument are shown below.
+
+```{r, results = "asis"}
+#' Test mean scaling...
+#' before <- before * mean(after, na.rm = TRUE) / mean(before, na.rm = TRUE)
+
+data.frame(instrument = c("A", "B"),
+           total_count = c(length(before), length(after)),
+           higher_6.5 = c(sum(before > 6.4, na.rm = TRUE),
+                          sum(after > 6.4, na.rm = TRUE))) |>
+    pandoc.table(
+        style = "rmarkdown",
+        caption = paste0("Number of measurements performed with the old (A), ",
+                         "or new (B) instrument and number of participants ",
+                         "with a HbA1c > 6.5%."))
+```
+
+Indeed, it looks like we might have a problem here! About twice as many
+participants have elevated HbA1c levels on the old instrument.
+
+For the present analysis we use however the T2D diagnosis performed on the
+samples collected during the NAFLD study - for comparison with baseline data we
+will however need to normalize the values.
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
 without T2D.
@@ -561,15 +598,15 @@ grid()
 FIB4 values are higher for participants without T2D.
 
 
-# Classification of steatosis in MASLD/NAFLD
+## Categorization of steatotic liver disease
 
 Clinical diagnosis of metabolic dysfunction associated steatotic liver disease
 (MASLD [@rinella_multisociety_2024], formerly NAFLD
 [@european_association_for_the_study_of_the_liver_easl_easl-easd-easo_2016])
 is based on a range of parameters:
 
-1) Presence of steatotic liver disease: sonographic evaluation, steatose score
-   of 2 - 3.
+1) Presence of steatotic liver disease (**SLD**): sonographic evaluation,
+   steatose score of 2 - 3.
 
 2) Presence of cardiometabolic risk factors/criteria (at least one out of 5):
    a) BMI >= 25 OR waist circumference > 94 (M) 80 (F) cm.
@@ -579,8 +616,8 @@ is based on a range of parameters:
    d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
    e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
 
-3) Rule out alcoholic liver disease. Alcohol consumption > 40g/day (one
-   *standard drink* is 10g alcohol).
+3) Rule out alcoholic liver disease or MetALD. Alcohol consumption < 40g/day
+   (one *standard drink* is 10g alcohol).
 
 This diagnosis includes also metabolic syndrome (MetS) which is diagnosed based
 on the presence of 3 risk factors:
@@ -693,7 +730,7 @@ Most participants scored positive in subcategories **c** (hypertension) and
 **a** (BMI and waist circumference). We visually inspect the overlap between the
 sub-criteria also with an upset plot.
 
-```{r, caption = "Overview and overlap of participants scoring positive in the individual cardiometabolic sub-criteria."}
+```{r, fig.cap = "Overview and overlap of participants scoring positive in the individual cardiometabolic sub-criteria."}
 library(UpSetR)
 cardiom <- as.data.frame(lapply(cardiom, as.integer))
 upset(cardiom, order.by = "degree")
@@ -701,9 +738,33 @@ upset(cardiom, order.by = "degree")
 
 A high number of participants score positive in all sub-criteria.
 
+**3)** We next evaluate alcohol consumption, based on the (self reported) GA2LEN
+FFQ and the derived daily alcohol consumption (variable *nanu016*).
+
+```{r}
+ffq <- nafldData("FFQ")
+rownames(ffq) <- ffq$AID
+ffq <- ffq[n_data$AID, ]
+n_data$daily_total_alcohol <- ffq$nanu016
+```
+
+The distribution of daily total alcohol consumption for female and male
+participants is shown below.
+
+```{r, fig.cap = "Distribution of total daily alcohol for male and female participants."}
+vioplot(split(n_data$daily_total_alcohol, n_data$na_sex),
+        main = "Daily total alcohol", ylab = "daily total alcohol [g]")
+grid()
+abline(h = 40)
+```
+
+In total `r sum(n_data$daily_total_alcohol > 40, na.rm = TRUE)` participants
+have a higher alcohol consumption (all male).
+For `r sum(is.na(n_data$daily_total_alcohol))` no alcohol consumption is
+available.
+
 At last we combine the scores from the sub-criteria to diagnose MASLD based on
-the criteria 1) and 2) from the definition. Criteria 3), related to alcohol
-consumption will be evaluated later.
+the criteria 1), 2) and 3) from the definition.
 
 1) Presence of steatotic liver disease: sonographic evaluation, steatose score
    of 2 - 3.
@@ -716,6 +777,9 @@ consumption will be evaluated later.
    d) Triglycerides >= 150 mg/dl OR lipid lowering treatment.
    e) HDL <= 40 (M) <= 50 (F) mg/dl OR lipid lowering treatment.
 
+3) Alcohol consumption < 40g/day. Discriminate between MASLD and MetALD. We
+consider participants without alcohol information as MASLD cases.
+
 ```{r}
 #' MASLD:
 #' - steatotic liver disease
@@ -725,6 +789,11 @@ n_data$MASLD <-
     rowSums(n_data[, c("cardiometabolic_a", "cardiometabolic_b",
                        "cardiometabolic_c", "cardiometabolic_d",
                        "cardiometabolic_e")], na.rm =TRUE) > 0
+n_data$MetALD <- n_data$MASLD & n_data$daily_total_alcohol >= 40
+#' - alcohol consumption < 40g/day; participants with missing values are,
+#'   according to other questionnaires, no heavy drinkers and are thus also
+#'   considered MASLD
+n_data$MASLD[which(n_data$daily_total_alcohol >= 40)] <- FALSE
 summary(n_data$MASLD)
 ```
 
@@ -733,22 +802,69 @@ study. Also, maybe interesting, there were in total `r sum(n_data$SLD)`
 individuals scored positive for steatotic liver disease, but 2 of them did not
 fulfill the additional criteria for MASLD.
 
-Again, we next evaluate distribution of age, BMI, sex etc for participants with
-and without MASLD.
+Also, some participants score positive for MetALD:
 
-```{r, fig.cap = "Age distribution for female and male study participants with and without MASLD."}
-f <- paste0(n_data$na_sex, n_data$MASLD)
-vioplot(split(n_data$na_ager, f), main = "Age/MASLD", ylab = "age [years]")
-grid()
+```{r}
+summary(n_data$MetALD)
 ```
 
-Age distribution is about similar for female participants. For males, MASLD
-negative have an on average slightly higher age. We next evaluate the
-distribution of BMI values for MASLD positive/negative cases (again stratified
-by sex).
+In contrast to the different binary variables (SLD, MetALD and MASLD) we create
+a single categorical variable *sld_type* with the categories:
 
-```{r, fig.cap = "Distribution of BMI values for female and male study participants with and without MASLD."}
-vioplot(split(n_data$BMI, f), main = "BMI/MASLD", ylab = "BMI")
+- **none**: participants negative for steatotic liver disease.
+- **SLD**: participants with a steatotic liver disease, but negative for
+  cardiometabolic criteria. This includes potentially cryptogenic SLD, alcoholic
+  liver disease (ALD), DILI or monogenic diseases.
+- **MASLD**: participants with SLD, positive for cardiometabolic criteria but
+  low alcohol consumption (below 40g/day). This includes also 8 participants
+  **without information on alcohol consumption**. These participants did not
+  provide the GA2LEN FFQ (hence missing values for quantified alcohol
+  consumption), but according to alcohol-related information in other
+  questionnaire they are not heavy drinkers and are thus added to this category.
+- **MetALD**: participants with SLD, positive for cardiometabolic criteria but
+  daily alcohol consumption > 40g/day.
+
+Below we define this variable.
+
+```{r}
+#' Define the SDL categorical variable
+n_data$sld_type <- "none"
+n_data$sld_type[n_data$SLD] <- "SLD"
+n_data$sld_type[n_data$MASLD] <- "MASLD"
+n_data$sld_type[which(n_data$MetALD)] <- "MetALD"
+n_data$sld_type <- factor(
+    n_data$sld_type, levels = c("none", "MASLD", "MetALD", "SLD"))
+summary(n_data$sld_type)
+```
+
+Note that all MetALD cases are exclusively male participants.
+
+We next evaluate distribution of age, BMI and other variables for participants
+in the various SLD categories.
+
+```{r, fig.cap = "Age distribution for female and male study participants with MASLD, SLD, MetALD or non-steatotic liver."}
+f <- n_data[n_data$na_sex == "Female", ]
+f$sld_type <- droplevels(f$sld_type)
+m <- n_data[n_data$na_sex == "Male", ]
+par(mfrow = c(1, 2))
+vioplot(split(f$na_ager, f$sld_type), main = "Age, females",
+        ylab = "age [years]")
+grid()
+vioplot(split(m$na_ager, m$sld_type), main = "Age, males",
+        ylab = "age [years]")
+grid()
+
+```
+
+Male participants with MASLD seem to be on average younger than apparently
+healthy controls. We next evaluate the distribution of BMI values for the SLD
+categories.
+
+```{r, fig.cap = "Distribution of BMI values for female and male study participants with MASLD, SLD, MetALD or non-steatotic liver."}
+par(mfrow = c(1, 2))
+vioplot(split(f$BMI, f$sld_type), main = "BMI, females", ylab = "BMI")
+grid()
+vioplot(split(m$BMI, m$sld_type), main = "BMI, males", ylab = "BMI")
 grid()
 ```
 
@@ -756,44 +872,59 @@ Participants with MASLD have a consistently higher BMI, both in female and male
 participants. We next evaluate the liver stiffness measurements (removing
 measurements that don't fulfill the quality requirements).
 
-```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with and without MASLD."}
-lstiff <- n_data$liver_stiffness
-lstiff[n_data$liver_stiffness_iqr > 30] <- NA
-vioplot(split(log2(lstiff), f), main = "liver stiffness/MASLD",
+```{r, fig.cap = "Distribution of liver stiffness values for female and male study participants with MASLD, SLD, MetALD or non-steatotic liver."}
+lstiff <- f$liver_stiffness
+lstiff[f$liver_stiffness_iqr > 30] <- NA
+par(mfrow = c(1, 2))
+vioplot(split(log2(lstiff), f$sld_type), main = "liver stiffness, females",
+        ylab = expression(log[2]~liver~stiffness))
+grid()
+lstiff <- m$liver_stiffness
+lstiff[m$liver_stiffness_iqr > 30] <- NA
+vioplot(split(log2(lstiff), m$sld_type), main = "liver stiffness, males",
         ylab = expression(log[2]~liver~stiffness))
 grid()
 ```
 
-Participants with MASLD have slightly higher liver stiffness measurements than
-those without. This might however be a consequence of their higher BMI.
+Participants with (any) steatotic liver disease have higher liver stiffness
+measurements than those without.
 
-```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with and without MASLD."}
-vioplot(split(n_data$visc_fat, f), main = "Visceral fat/MASLD",
+```{r, fig.cap = "Distribution of visceral fat values for female and male study participants with MASLD, SLD, MetALD or non-steatotic liver."}
+par(mfrow = c(1, 2))
+vioplot(split(f$visc_fat, f$sld_type), main = "Visceral fat, females",
+        ylab = expression(visceral~fat))
+grid()
+vioplot(split(m$visc_fat, m$sld_type), main = "Visceral fat, males",
         ylab = expression(visceral~fat))
 grid()
 ```
 
 Again, participants with MASLD have on average higher visceral fat.
 
-```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with and without MASLD."}
-vioplot(split(n_data$fib4, f), main = "FIB4/MASLD",
+```{r, fig.cap = "Distribution of FIB4 values for female and male study participants with MASLD, SLD, MetALD or non-steatotic liver."}
+par(mfrow = c(1, 2))
+vioplot(split(f$fib4, f$sld_type), main = "FIB4, females",
+        ylab = expression(FIB4))
+grid()
+vioplot(split(m$fib4, m$sld_type), main = "FIB4, males",
         ylab = expression(FIB4))
 grid()
 ```
 
 FIB4 values are higher for participants without MASLD.
 
-At last we evaluate also the T2D cases with and without MASLD.
+At last we evaluate also the T2D cases with and without any steatotic liver
+disease.
 
 ```{r}
-table(n_data[, c("t2d", "MASLD")])
+table(n_data[, c("t2d", "sld_type")])
 ```
 
-A higher proportion of participants with T2D score in addition also positive for
-MASLD.
+About half of the participants with MASLD are also positive for T2D. In the
+present data set, most of the T2D positive cases do also have MASLD.
 
 
-# Classification of Metabolic Syndrome
+## Classification of Metabolic Syndrome
 
 Metabolic syndrome (MetS) is diagnosed based on the presence of 3 risk factors
 (and partially overlaps with the MASLD definition above):
@@ -817,16 +948,15 @@ n_data$MetS <-
 ```
 
 The overlap between participants with metabolic syndrome and MASLD are shown
-below.
+below. Also, almost 3 times more participants with MASLD score also positive for
+MetS.
 
 ```{r}
-table(n_data[, c("MetS", "MASLD")])
+table(n_data[, c("MetS", "sld_type")])
 ```
 
-For the biggest part, individuals with MetS are also positive for MASLD. On the
-other side, also a quite large proportion of individuals are classified to have
-MASLD but are not positive for MetS. Most T2D positive cases score also positive
-for MetS (see below).
+For the biggest part, individuals in the present data set with MetS are also
+positive for MASLD.
 
 ```{r}
 table(n_data[, c("t2d", "MetS")])
@@ -950,234 +1080,21 @@ any(do$aid %in% nafld$aid_nafld)
 ```
 
 
-## Metabolomics data
+# Questions/comments
 
-We next evaluate metabolite concentrations in baseline and NAFLD. We first
-calculate correlations for metabolites (for each metabolite correlating
-measurements in baseline to those from NAFLD).
-
-```{r}
-p180_data <- data(p180)
-p180_labels <- labels(p180)
-metabolites <- p180_labels$description
-metabolites <- metabolites[-grep("assay flags", metabolites)]
-colnames(p180_data) <- p180_labels$description
-
-a <- as.matrix(p180_data[n_data$aid_chris, metabolites])
-b <- as.matrix(p180_data[n_data$AID, metabolites])
-
-cors <- vapply(seq_len(ncol(a)), function(i) {
-    cor(a[, i], b[, i], use = "pairwise.complete.obs",
-        method = "spearman")
-}, numeric(1))
-```
-
-The table below lists the correlation coefficients (between values from baseline
-and NAFLD) for all metabolites. Metabolites are ordered by magnitude of the
-correlation coefficient.
-
-```{r}
-tmp <- data.frame(p180_labels[match(metabolites, p180_labels$description),
-                              c("analyte_name", "analyte_class")],
-                  rho = cors)
-pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
-```
-
-Some metabolites yield consistent values while others show much lower
-*reproducibility*.
-
-```{r, fig.cap = "Correlation coefficients for metabolites (ordered by magnitude)."}
-plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
-     ylab = "rho", xlab = "rank", main = "Metabolites")
-grid()
-```
-
-We plot next the data for the best and worst correlating metabolite.
-
-```{r, fig.cap = "Correlations between metabolite abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each metabolite on pairs of measurements for the same participant."}
-par(mfrow = c(1, 2))
-
-i <- which.max(tmp$rho)
-plot(log2(a[, i]), log2(b[, i]),
-     main = colnames(a)[i],
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-i <- which.min(abs(tmp$rho))
-plot(log2(a[, i]), log2(b[, i]),
-     main = colnames(a)[i],
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-```
-
-Metabolite C14:2-OH showed also previously differences between measurements for
-the first 5000 and second 2000 participants.
-
-Next we calculate correlations for participants (correlate measurements for
-each participant between baseline and NAFLD).
-
-```{r}
-cors <- vapply(seq_len(nrow(a)), function(i) {
-    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
-        method = "spearman")
-}, numeric(1))
-
-tmp <- data.frame(AID = rownames(a), rho = cors)
-```
-
-```{r, fig.cap = "Correlation coefficients for pairwise correlations of all metabolite measurements from baseline and NAFLD per participant."}
-plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
-     ylab = "rho", xlab = "rank", main = "Participants")
-grid()
-```
-
-Correlation of values between baseline and NAFLD are highly correlated. As
-examples we plot below the values for the best and worst correlating
-participant.
-
-```{r}
-par(mfrow = c(1, 2))
-
-i <- which.max(tmp$rho)
-plot(log2(a[i, ]), log2(b[i, ]),
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-i <- which.min(tmp$rho)
-plot(log2(a[i, ]), log2(b[i, ]),
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-```
-
-Values for the first participant are nicely correlated. For the second,
-correlation is present, but there seems to be a systematic shift in some values
-(eventually e.g. values from FIA measurement).
-
-
-## Proteomics data
-
-We evaluate also correlations for the available proteomics data.
-
-```{r}
-swath_data <- data(scan)
-swath_labels <- labels(scan)
-proteins <- swath_labels$description
-proteins <- proteins[swath_labels$Genes != ""]
-colnames(swath_data) <- swath_labels$description
-
-a <- as.matrix(swath_data[n_data$aid_chris, proteins])
-b <- as.matrix(swath_data[n_data$AID, proteins])
-
-cors <- vapply(seq_len(ncol(a)), function(i) {
-    cor(a[, i], b[, i], use = "pairwise.complete.obs",
-        method = "spearman")
-}, numeric(1))
-```
-
-The table below lists the correlation coefficients (between values from baseline
-and NAFLD) for all proteins. Proteins are ordered by magnitude of the
-correlation coefficient.
-
-```{r}
-tmp <- data.frame(
-    Genes = swath_labels[match(proteins, swath_labels$description),
-                         c("Genes")],
-    rho = cors)
-rownames(tmp) <- proteins
-pandoc.table(tmp[order(tmp$rho, decreasing = TRUE), ], style = "rmarkdown")
-```
-
-High correlations can be observed for many proteins.
-
-```{r, fig.cap = "Correlation coefficients for proteins (ordered by magnitude)."}
-plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
-     ylab = "rho", xlab = "rank", main = "Proteins")
-grid()
-```
-
-We plot next the data for the best and worst correlating protein.
-
-```{r, fig.cap = "Correlations between protein abundances in CHRIS baseline and NAFLD for the metabolite with the highest and lowest correlation. Correlations calculated for each protein on pairs of measurements for the same participant."}
-par(mfrow = c(1, 2))
-
-i <- which.max(tmp$rho)
-plot(log2(a[, i]), log2(b[, i]),
-     main = tmp[i, "Genes"],
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-i <- which.min(abs(tmp$rho))
-plot(log2(a[, i]), log2(b[, i]),
-     main = tmp[i, "Genes"],
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-```
-
-Next we calculate correlations for participants (correlate measurements for
-each participant between baseline and NAFLD).
-
-```{r}
-cors <- vapply(seq_len(nrow(a)), function(i) {
-    cor(a[i, ], b[i, ], use = "pairwise.complete.obs",
-        method = "spearman")
-}, numeric(1))
-
-tmp <- data.frame(AID = rownames(a), rho = cors)
-```
-
-Note that for the in total `r nrow(tmp)` participants we have only for
-`r sum(!is.na(tmp$rho))` measurements both in the baseline and NAFLD collection
-(mostly because measurements are missing in baseline).
-
-```{r, fig.cap = "Correlation coefficients for pairwise correlations of all protein measurements from baseline and NAFLD per participant."}
-plot(sort(tmp$rho), pch = 21, col = "#00000080", bg = "#00000040",
-     ylab = "rho", xlab = "rank", main = "Participants")
-grid()
-```
-
-Correlation of values between baseline and NAFLD are highly correlated. As
-examples we plot below the values for the best and worst correlating
-participant.
-
-```{r}
-par(mfrow = c(1, 2))
-
-i <- which.max(tmp$rho)
-plot(log2(a[i, ]), log2(b[i, ]),
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-i <- which.min(tmp$rho)
-plot(log2(a[i, ]), log2(b[i, ]),
-     xlab = expression(log[2]~baseline),
-     ylab = expression(log[2]~NAFLD), pch = 21,
-     col = "#00000080", bg = "#00000040")
-grid()
-abline(0, 1)
-
-```
+- [X] DONE: check instruments between baseline and NAFLD study - was there a
+      change that could explain differences in HbA1c?
+- [X] TODO: discuss with Christoph, what is his opinion on that? Use the data
+      from NAFLD. In a clinical settings, two measurements are required for
+      diagnosis.
+- [X] TODO: how to normalize the values. No need as long as we don't compare
+      against baseline data.
+- [X] TODO: should we consider a categorical variable with CTRL, SLD, MASLD,
+      MetALD instead just a binary for MASLD?
+- [X] TODO: how to categorize potential MASLD cases without alcohol information?
+      (in total 8). According to other alcohol related information from other
+      questionnaires they are no heavy drinkers and thus added to the MASLD
+      category.
 
 
 # Session Information
