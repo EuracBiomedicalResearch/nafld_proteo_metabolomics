@@ -441,108 +441,17 @@ data.frame(status = c("No", "Yes"),
                          "Columns SR indicate self-reported diagnosis."))
 ```
 
-Surprisingly, the number of cases are higher in CHRIS baseline than in the NAFLD
-studies, both diagnosed and self-reported. The higher proportion of T2D
-diagnosed participants in CHRIS baseline seems to be mostly driven by glycated
-hemoglobin measurements (see tables below). Also interestingly, self-reported
-diabetes is much higher than diagnosed (type 2) diabetes in NAFLD.
-
-```{r, results = "asis"}
-data.frame(status = c("No", "Yes"),
-           medication = as.integer(table(n_data$dia_med == "Yes")),
-           HbA1c = as.integer(table(n_data$HbA1c >= 6.5)),
-           glucose = as.integer(table(n_data$glucose >= 126 &
-                                      n_data$sr_fasting == "Yes"))) |>
-    pandoc.table(style = "rmarkdown",
-                 caption = paste0("Diagnostic criteria in NAFLD."))
-```
-
-```{r, results = "asis"}
-data.frame(status = c("No", "Yes"),
-           medication = as.integer(table(n_data$chris_dia_med == "Yes")),
-           HbA1c = as.integer(table(n_data$chris_HbA1c >= 6.5)),
-           glucose = as.integer(table(n_data$chris_glucose >= 126 &
-                                      n_data$chris_sr_fasting == "Yes"))) |>
-    pandoc.table(style = "rmarkdown",
-                 caption = paste0("Diagnostic criteria in CHRIS."))
-```
-
-Note that the 46 participants for whom the T2D diagnosis differs between
-baseline and NAFLD all have glycated hemoglobin percentages close to the cut-off
-(data not shown).
-
-```{r, results = "asis", eval = FALSE}
-sel <- n_data$t2d != n_data$chris_t2d
-tmp <- n_data[sel, ]
-tmp[, c("chris_dm", "self_dm", "chris_t2d", "t2d", "chris_HbA1c", "HbA1c",
-        "chris_glucose", "glucose")] |>
-    pandoc.table(style = "rmarkdown", split.table = Inf)
-```
+The number of positive cases are higher in CHRIS baseline than in the NAFLD
+study because of the different instruments/protocols that were used to quantify
+the glycated hemoglobin (HbA1c; data not shown here). Also interestingly,
+self-reported diabetes is much higher than diagnosed (type 2) diabetes in NAFLD.
 
 HbA1c measurements were conducted on blood samples for all NAFLD participants on
 a Tosoh Automated Glycohemoglobin Analyzer HLC-723 G8 (TOSOH CORPORATION
 SHIBA-KOEN FIRST BLDG) while for the measurement on blood samples from the NAFLD
 samples the ARKRAY ADAMS A1c HA-8180V instrument was used (instrument change was
-performed 2015-05-15).
-
-Below we compare the HbA1c measurements from the two instruments on the full
-CHRIS baseline collection to evaluate whether there was an (apparent) systematic
-shift.
-
-```{r, fig.cap = "CHRIS baseline. HbA1c concentrations (%) quantified using the old (FALSE) and new (TRUE) instrument."}
-tmp <- chrisData("lab")
-rownames(tmp) <- tmp$AID
-tmp_gi <- chrisData("general")
-rownames(tmp_gi) <- tmp_gi$AID
-tmp_gi <- tmp_gi[rownames(tmp), ]
-hba1c <- tmp$x0lp06a
-inst_cat <- tmp_gi$x0_examd > as.Date("2015-05-15")
-
-vioplot(split(hba1c, inst_cat), ylab = "HbA1c [%]",
-        main = "Glycohemoglobin before and after 2015-05-15")
-grid()
-abline(h = 6.5)
-```
-
-The average percentage of HbA1c quantified on the *old* instrument was higher
-than on the new instrument. The distribution (quantiles) is shown below.
-
-```{r}
-after <- hba1c[inst_cat]
-before <- hba1c[!inst_cat]
-
-quantile(before, na.rm = TRUE)
-quantile(after, na.rm = TRUE)
-```
-
-The mean concentrations before the instrument changes were
-
-`r format(mean(before, na.rm = TRUE), digits = 2)`
-
-and after the change
-
-`r format(mean(after, na.rm = TRUE), digits = 2)`.
-
-The number of participants (in CHRIS baseline) with an HbA1c concentration
-higher than 6.5% per instrument are shown below.
-
-```{r, results = "asis"}
-#' Test mean scaling...
-#' before <- before * mean(after, na.rm = TRUE) / mean(before, na.rm = TRUE)
-
-data.frame(instrument = c("A", "B"),
-           total_count = c(length(before), length(after)),
-           higher_6.5 = c(sum(before > 6.4, na.rm = TRUE),
-                          sum(after > 6.4, na.rm = TRUE))) |>
-    pandoc.table(
-        style = "rmarkdown",
-        caption = paste0("Number of measurements performed with the old (A), ",
-                         "or new (B) instrument and number of participants ",
-                         "with a HbA1c > 6.5%."))
-```
-
-Indeed, it looks like we might have a problem here! About twice as many
-participants have elevated HbA1c levels on the old instrument.
+performed 2015-05-15). The HbA1c (%) measurements are systematically (slightly)
+higher with the old instrument.
 
 For the present analysis we use however the T2D diagnosis performed on the
 samples collected during the NAFLD study - for comparison with baseline data we
@@ -1013,6 +922,30 @@ grid()
 ```
 
 FIB4 values are higher for participants without MetS.
+
+```{r}
+#' At last we export the phenodata defined in this analysis.
+library(writexl)
+tmp <- n_data[, c("AID", "aid_chris", "na_ager", "na_sex",
+                  "case", "BMI", "body_fat", "visc_fat", "liver_stiffness",
+                  "liver_stiffness_iqr", "liver_fat", "visual_fat", "fib4",
+                  "self_dm", "HbA1c", "glucose", "dia_med", "sr_fasting",
+                  "sr_no_drinking", "t2d", "SLD", "waist_circumference",
+                  "systolic_bp", "diastolic_bp", "pb_med", "triglycerides",
+                  "lm_med", "ms_med", "HDL", "daily_total_alcohol", "MASLD",
+                  "MetALD", "sld_type", "MetS")]
+#' renaming some columns.
+colnames(tmp) <- c("AID", "AID_chris", "Age", "Sex",
+                  "case", "BMI", "body_fat", "visc_fat", "liver_stiffness",
+                  "liver_stiffnes_iqr", "liver_fat", "visual_fat", "FIB4",
+                  "self_DM", "HbA1c", "glucose", "med_DM", "fasting",
+                  "no_drinking", "T2D", "SLD", "waist_circumference",
+                  "systolic_BP", "diastolic_BP", "med_BP", "triglycerides",
+                  "med_lip", "med_MS", "HDL", "daily_total_alcohol", "MASLD",
+                  "MetALD", "sld_type", "MetS")
+write_xlsx(tmp, path = "data/masld_phenotypes.xlsx")
+
+```
 
 
 
