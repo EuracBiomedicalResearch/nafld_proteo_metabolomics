@@ -1,6 +1,6 @@
 ---
 title: "NAFLD_metab_targeted_lm"
-author: "Marilyn De Graeve, Nikola Dordevic, Vinicius Verri Hernandes, Clemens Dierks, Essi Hantikainen, Johannes Rainer"
+author: "Marilyn De Graeve, Nikola Dordevic, Vinicius Verri Hernandes, Essi Hantikainen, Johannes Rainer"
 affiliation: "Eurac Research, Bolzano, Italy"
 date: "2024-03-11"
 graphics: yes
@@ -18,6 +18,10 @@ bibliography: references.bib
 **Compiled**: `r date()`
 
 ```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
 knitr::knit_hooks$set(time_it = local({
   now <- NULL
   function(before, options) {
@@ -33,11 +37,6 @@ knitr::knit_hooks$set(time_it = local({
     }
   }
 }))
-
-suppressMessages(library("BiocStyle"))
-suppressMessages(library("kableExtra"))
-suppressMessages(library("knitr"))
-suppressMessages(library("rmarkdown"))
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
 
@@ -47,30 +46,32 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 
 During this workflow, statistical analyis (linear models) are performed on the
 targeted metabolomics data from the metabolic dysfunction-associated steatotic
-liver disease (MASLD) cohort. MAFLD, previously known as NAFLD is the most
+liver disease (MASLD) cohort. MASLD, previously known as NAFLD is the most
 chronic liver disease, affecting more than 30% of global population. The MAFLD
 cohort is a subset of approximatley 353 # participants from the Cooperative
 Health Research in South Tirol (CHRIS) study, which were requested to return for
 a second resampling and additional phenotyping. The NAFLD cohort represent an
 unhealty group with various degrees of steatotic (alcoholic) liver disease
-classifications.
+classifications. See [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
+(respectively the rendered html report) for an overview of the data set and the
+definition of the phenotype.
 
-This document describes the statistical analysis using linear models to identify
-associations between metabolites and metabolic dysfunction-associated steatotic
-liver disease (MASLD). The next 4 defined types of steatotic liver
+This document describes the statistical analysis using multiple linear models to
+identify associations between metabolites and metabolic dysfunction-associated
+steatotic liver disease (MASLD). The next 4 defined types of steatotic liver
 disease (SLD) classifications are examined here:
 
-- *none: participants negative for steatotic liver disease.
-- *MASLD: (= Metabolic Dysfunction Associated Steatotic Liver Disease)
+- *none*: participants negative for steatotic liver disease.
+- *MASLD*: (= Metabolic Dysfunction Associated Steatotic Liver Disease)
   participants with SLD, positive for cardiometabolic criteria but low alcohol
   consumption (below 40g/day). This includes also 8 participants without
   information on alcohol consumption. These participants did not provide the
   GA2LEN FFQ (hence missing values for quantified alcohol consumption), but
   according to alcohol-related information in other questionnaire they are not
   heavy drinkers and are thus added to this category.
-- *MetALD: (= MASLD and increased alcohol intake) participants with SLD,
+- *MetALD*: (= MASLD and increased alcohol intake) participants with SLD,
   positive for cardiometabolic criteria but daily alcohol consumption > 40g/day.
-- *SLD: (= steatotic liver disease) participants with a SLD, but negative for
+- *SLD*: (= steatotic liver disease) participants with a SLD, but negative for
   cardiometabolic criteria. This includes potentially cryptogenic SLD, alcoholic
   liver disease (ALD), DILI or monogenic diseases.
 
@@ -99,7 +100,8 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD'  #'/media/mdegraeve/josung/data/NAFLD' #'data' #FINDME!
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+DATA_PATH <- "."
 
 ```
 
@@ -109,20 +111,17 @@ DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD'  #'/media/m
 #' Load libraries
 library(BiocParallel)
 library(DT)
-suppressMessages(library(ggfortify))
+## library(ggfortify)
 library(ggplot2)
-library(ggpubr)
-suppressMessages(library(magick))
-suppressMessages(library(pander))
-suppressMessages(library(pheatmap))
-suppressMessages(library(plotly))
-suppressMessages(library(RColorBrewer))
-suppressMessages(library(readxl))
+##library(ggpubr)
+library(pander)
+library(pheatmap)
+library(plotly)
+library(RColorBrewer)
+library(readxl)
 library(reshape2)
-options(rgl.useNULL = TRUE)
-library(rgl)
-suppressMessages(library(tidyfr))
-suppressMessages(library(vioplot))
+library(tidyfr)
+library(vioplot)
 library(writexl)
 
 ```
@@ -152,7 +151,8 @@ which includes general information for each measurement.
 ```{r load_dataset, message = FALSE}
 #' load TDF using tidyfr
 #list_data_modules(path = DATA_PATH)
-p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2", path = DATA_PATH)
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2",
+                    path = DATA_PATH)
 met_data <- data(p180)
 met_ann <- labels(p180)
 stopifnot(all(colnames(met_data) == rownames(met_ann)))
@@ -184,7 +184,7 @@ colnames(met_data)
 
 The loaded data contains the samples as rows, and the metabolite names as
 colums. The measurements of the `met_data` object are the absolute
-concentrations of metabolite per sample.
+concentrations of metabolite per sample, in natural scale.
 
 To ensure a normal distribution of the metabololits, we perform log2
 transformation.
@@ -203,20 +203,23 @@ met_data <- met_data[grep("^008", rownames(met_data)), ]
 
 ```
 
-All available traid (phenotype) data, previously saved in the file, was loaded
-and merged with the log2 transformed metabolomics data of the NAFLD cohort.
+All available trait (phenotype) data was defined in the
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd), is loaded below and merged
+with the log2 transformed metabolomics data of the NAFLD cohort.
 
 ```{r add phenotype dataa}
 #' load xlsx file instead of below
 handle <- 'masld_phenotypes.xlsx'
-masld_phenotype_df <- read_excel(file.path(DATA_PATH, handle))
+masld_phenotype_df <- read_excel(file.path(DATA_PATH, handle)) |>
+    as.data.frame()
 #head(masld_phenotype_df, 5)
 #colnames(masld_phenotype_df)
 #dim(masld_phenotype_df)
 
 #' make sure sld_type is a factor with group 'none' as the baseline
-masld_phenotype_df$sld_type <- as.factor(masld_phenotype_df$sld_type)
-masld_phenotype_df$sld_type <- factor(masld_phenotype_df$sld_type, levels = c('none', 'MASLD', 'MetALD', 'SLD'))
+masld_phenotype_df$sld_type <- factor(masld_phenotype_df$sld_type,
+                                      levels = c('none', 'MASLD',
+                                                 'MetALD', 'SLD'))
 print('the sld types are:')
 levels(masld_phenotype_df$sld_type)
 print('nr of samples per sld types:')
@@ -235,24 +238,19 @@ met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
 ```
 
 Because for 2 metabolites, 'PC aa C30:2' and 'Histamine', only NAs are present
-for the less populated `sld_type` groups (MetALD end SLD); only none and MASLD
-types are considered further.
+for the less populated `sld_type` groups (*MetALD* end *SLD*), only *none* and
+*MASLD* types are considered further.
 
 ```{r keep only none and MASLD types}
 #' because problem 2 metabolites only NAs in some sld types,
 #' keep only none and MASLD
-met_data <- met_data[met_data$sld_type == 'none' | met_data$sld_type == 'MASLD',]
+met_data <- met_data[met_data$sld_type %in% c('none', 'MASLD'), ]
+met_data$sld_type <- droplevels(met_data$sld_type)
+met_data$Sex <- factor(met_data$Sex)
 
-met_data$sld_type <- as.factor(met_data$sld_type)
-met_data$sld_type <- factor(met_data$sld_type, levels = c('none', 'MASLD'))
-
-print('the sld types are:')
-levels(met_data$sld_type)
-print('nr of samples per sld types:')
-table(met_data$sld_type)
-
+#' Summary of available data:
+summary(met_data[, c("sld_type", "Age", "Sex", "BMI")])
 ```
-
 
 Create additional variable for age per 10y, because coefficients and effect
 sizes correspond to one year difference, and the anual difference is
@@ -265,6 +263,14 @@ meaningful cut-off.
 met_data$Age_10 <- met_data$Age / 10
 
 ```
+
+# Evaluation of the various variables in the data set
+
+- violin plot of BMI of the data split by sex and SLD type. to evaluate whether
+  there is a strong difference in BMI between MASLD and CTRL - we might then
+  eventually add that variable also to the linear model?
+- same plot for age.
+- maybe also a PCA of the data.
 
 # Linear model to evaluate SLD types
 
@@ -290,7 +296,7 @@ funForLinReg <- function(analyte, data) {
     rownames(pvals) <- analyte
     colnames(pvals) <- c(paste0("coef_", rownames(res)),
                          paste0("p-value_", rownames(res)))
-    return(pvals)
+    pvals
 }
 
 #' tests
@@ -303,8 +309,8 @@ funForLinReg <- function(analyte, data) {
 #funForLinReg(analyte, met_data)
 
 #' Fit linear models and extract coefficients and p-values on each metabolite
-lm_output <- do.call(rbind,
-                     lapply(metabolites, function(x) funForLinReg(x, met_data)))
+lm_output <- lapply(metabolites, FUN = funForLinReg, data = met_data) |>
+    do.call(what = rbind)
 
 #' Adjust p-values for multiple hypothesis testing
 adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
@@ -318,9 +324,9 @@ Next we calculate the effect sizes.
 
 To obtain comparable coefficients, prior to linear modelling all the metabolites
 are standardized to zero mean and unit variance (note that this does not
-influence the linear models since they are affine equivariant).
-In autoscaled data, difference of 1 corresponds to standard deviation of 1.
-This parameter will be called "effect size" and will be use to evaluate group
+influence the linear models since they are affine equivariant). In such
+autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
+parameter will be called "effect size" and will be use to evaluate group
 differences.
 
 ```{r effectsize, message=FALSE}
@@ -331,7 +337,7 @@ met_data_scaled[, metabolites] <- met_data[, metabolites] |>
     scale(scale = TRUE)
 
 #' fit linear models and extract the coefficients
-es <- lapply(metabolites, function(x) funForLinReg(x, met_data_scaled)) |>
+es <- lapply(metabolites, FUN = funForLinReg, data = met_data_scaled) |>
     do.call(what = rbind)
 es <- es[, grep("coef", colnames(es))]
 colnames(es) <- sub("coef", "effectSize", colnames(es))
@@ -340,22 +346,24 @@ lm_output <- cbind(lm_output, es)
 
 ```
 
-To call a metabolites *significant* we require that it has, in addition to an
-adjusted p-value smaller than 0.05, also a difference in abundances (expressed
-in percentage) which is at least once as high as the coefficient of variation
-(CV) for that metabolite. The coefficient of variation was calculated on the QC
-CHRIS Pool samples (cv_qc_chris column in the p180 TDF labels), hence it
-represents the technical variability that was observed for each metabolite.
+To call a metabolites *significant* we consider, in addition to the
+*statistical* significance levels also the magnitude of its coefficient,
+relative to the coefficient of variation (CV) for that metabolite. The CV,
+calculated on study-internal QC samples (pools of all samples) are a measure of
+the technical noise specific for that metabolite in the present data set. Thus,
+with this method we prioritize metabolites with a larger difference between the
+observed (biological) difference and the (separately estimated) technical variance.
 
-Below we add thus evaluate for each metabolite and comparison whether it fulfills
-that criteria.
+Below we add thus evaluate for each metabolite and comparison whether it
+fulfills that criteria.
 
 ```{r define significance criteria}
 #' define the different coefficients as comparisons
 comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
 
-#' define which metabolites are considered significant using p-adj only
+#' define which metabolites are considered statistically significant
 sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
+colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
 #colSums(sign_p)
 
 #' Convert the (absolute) difference in abundance into a difference in
@@ -363,61 +371,50 @@ sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
 diff_percentage <- function(x) {
     (2^abs(x) - 1) * 100
 }
-diff_perc <- apply(lm_output[, comps],
-                   MARGIN = 2, diff_percentage)
+diff_perc <- apply(lm_output[, comps], MARGIN = 2, diff_percentage)
 colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 
-#' define which metabolites are considered significant using p-adj and cv qc chris
-sign_cv <- lapply(comps, function(z) {
+#' Define for which metabolites the difference in concentration is larger
+#' than a certain proportion of the CV
+cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    sign_p[, paste0("p-adj_", z)] < 0.05 &
-        diff_perc[, paste0("diff_perc_", z)] > 50 * #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
-colnames(sign_cv) <- paste0("significant_", comps)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
 
 #' Use statistical significance for non-categorical traits instead of bool
-sign_cv[, "significant_coef_Age_10"] <- sign_p[, "p-adj_Age_10"]
+sign_cv <- sign_p & cv_cut
+sign_cv[, "significant_Age_10"] <- sign_p[, "significant_Age_10"]
 
-lm_output <- cbind(lm_output, sign_cv)
+#' Combine with result from linear model converting to a data.frame to
+#' avoid logicals being converted to numeric
+lm_output <- data.frame(lm_output, sign_cv)
 
 ```
 
 The number of metabolites called significant or with an adjusted p-value smaller
 than 0.05 for each of the extracted coefficients are shown below. For a complete
-comparison, the number of metabolites complying to either the p-adjusted value
+comparison, the number of metabolites complying to either the adjusted p value
 or either the CV-value, as single threshold criteria, are calculated and
 summarized here as well.
 
 ```{r table-sig-mets, results = "asis"}
-#' nr of covariates with p-adj < 0.05
-sig_p <- apply(lm_output[, grep("adj", colnames(lm_output))], 2,
-                 function(z) sum(z < 0.05))
-names(sig_p) <- sub("p-adj_", "", names(sig_p))
-
-#' only cv significance (wo p-adj) to be complete
-cv <- lapply(comps, function(z) {
-    z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 * #findme!!! 2*100 of *100? EVAL!!
-        met_ann[metabolites, "cv_qc_chris"]
-}) |>
-    do.call(what = cbind)
-colnames(cv) <- paste0("cv_", comps)
-
 #' merge to p-adj to cv significance summary
 sig_tab <- data.frame(
-    `p_adj < 0.05` = sig_p,
-    `cv thresh` = colSums(cv),
-    significant = colSums(sign_cv[, paste0("significant_coef_", names(sig_p))]),
+    `p_adj < 0.05` = colSums(sign_p),
+    `cv thresh` = colSums(cv_cut),
+    significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
     check.names = FALSE)
 
-pandoc.table(data.frame(sig_tab, check.names = FALSE),
-             style = "rmarkdown",
-             caption = paste0("Number of significant metabolites per tested covariate. ",
-                     " *p_adj < 0.05*: number of statistically significant metabolites.",
-                     " *cv*: number of metabolites with percentage abundance difference ",
-                     " above the CV-based threshold.",
+pandoc.table(
+    sig_tab, style = "rmarkdown",
+    caption = paste0("Number of significant metabolites per tested covariate. ",
+                     " *p_adj < 0.05*: number of statistically significant",
+                     " metabolites.",
+                     " *cv*: number of metabolites with percentage abundance",
+                     " difference above the CV-based threshold.",
                      " *significant*: number of metabolites that fulfill ",
                      "the CV-based criteria in addition to the p-adj. threshold"))
 
@@ -427,13 +424,11 @@ Export results for inspection:
 
 ```{r export-results}
 results <- data.frame(
-    analyte_class = met_ann[rownames(lm_output), c("analyte_class")],
+    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
+                                   "biochemical_name", "cv_qc_chris")],
     lm_output,
-    #es,
-    diff_perc,
-    met_ann[metabolites, "cv_qc_chris"], #check manual cv threshold
-    rownames(lm_output))
-    #sign_cv)
+    diff_perc
+)
 
 #colnames(results)
 #colnames(lm_output)
@@ -445,7 +440,7 @@ write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE
 
 ```
 
-we visualize the associations in a heatmap. The effect size are added for the
+We visualize the associations in a heatmap. The effect size are added for the
 associations, for the significant metabolites (min 1 significance to
 covariate). also for the not significant associations, the effect size is shown.
 
@@ -513,15 +508,19 @@ print('nr of significant metabolites in the sld_type group:')
 sum(es_results_sig[, 'effectSize_sld_typeMASLD'] != "")
 
 #' plot
+colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
 pheatmap(es_results, display_numbers = es_results_sig,
          number_color = "#444444", fontsize_number = 7)
 
 ```
 
-We investigate the associations for the SLD types 'none vs. MASLD' further, by
-visualizing the metabolites in a volcano plot.  Red colored points are those with an adjusted
-p-value smaller than 0.05.
+A considerable number of metabolites are significant both for MASLD and for sex,
+in many cases even with the same sign.
 
+We investigate the associations for MASLD, i.e. the difference in average
+concentrations between participants of SLD types *MASLD* and *none*. We show the
+results for that coefficient using a volcano plot, coloring significant
+associations in red.
 
 ```{r volcano, FIG-volcano-sld_type, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
 plot_volcano <- function(x, comparison = character(), ...) {
@@ -536,43 +535,43 @@ plot_volcano <- function(x, comparison = character(), ...) {
 significant_points <- function(x, comparison = character(),
                                diff_perc = 2, col = "#E41A1CCE",
                                bg = "#E41A1C40", ...) {
-    sign_cv <- x[, paste0("significant_coef_", comparison)]
+    s <- x[, paste0("significant_", comparison)]
     X <- x[, paste0("coef_", comparison)]
     Y <- x[, paste0("p.adj_", comparison)]
     Y[Y == 0] <- min(Y > 0) / 10
-    if (any(sign_cv))
-        points(X[sign_cv], -log10(Y[sign_cv]), col = col, bg = bg, pch = 21)
+    if (any(s))
+        points(X[s], -log10(Y[s]), col = col, bg = bg, pch = 21)
 }
-plot_volcano(results, "sld_typeMASLD", main = "sld_typeMASLD")
-abline(h = -log10(0.05), lty = 2, col = "grey")
+plot_volcano(results, "sld_typeMASLD", main = "MASLD vs CTRL")
+grid()
+abline(h = -log10(0.05), lty = 1, col = "grey")
 significant_points(results, comparison = "sld_typeMASLD")
-                                        #!!!findme warning due to double colnames, if 0 signif...
 
 ```
 
 The (static) table with the significant metabolites is shown below:
-#FINDME with signif ipv p-adj only better here???!!! also >0.05 so NOK???
 
 ```{r table-sig-sex, results = "asis", echo = FALSE}
 significant_table <- function(x, comparison = character(),
-                              columns = c("analyte_class")) {
- sigs <- which(x[, paste0("significant_coef_", comparison)] == 1) #get rownr of sign metab
- columns <- c(columns, paste0(c("coef_", "p.adj_", "effectSize_"), comparison))
- tmp <- x[sigs, columns]
- tmp <- tmp[order(tmp[, paste0("p.adj_", comparison)]), ]
- colnames(tmp) <- sub(paste0("_", comparison), "", colnames(tmp))
- return(tmp)
+                              columns = c("analyte_class", "cv_qc_chris")) {
+    sigs <- x[, paste0("significant_", comparison)]
+    columns <- c(columns, paste0(c("coef_", "p.adj_", "effectSize_"),
+                                 comparison))
+    tmp <- x[sigs, columns]
+    tmp <- tmp[order(tmp[, paste0("p.adj_", comparison)]), ]
+    colnames(tmp) <- sub(paste0("_", comparison), "", colnames(tmp))
+    tmp
 }
 sig_tab <- significant_table(results, comparison = "sld_typeMASLD")
 
-pandoc.table(sig_tab,
-             style = "rmarkdown", split.table = Inf,
-             caption = "Significant metabolites for sld_typeMASLD")  #NOK bug FINDME!!! wrong if see excel and 2nd table???
+pandoc.table(
+    sig_tab, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Metabolites with significant differences in ",
+                     "concentrations between MASLD and CTRL participants."))
 
 ```
 
-Show in table with the results for all metabolites from the test ordered with the
-tests p-values and effect size:
+The full results table is shown below.
 
 ```{r table-top-20, results = "asis"}
 ##
@@ -581,49 +580,65 @@ oorder <- results[order(results[, "p.adj_sld_typeMASLD"]), ]
 pandoc.table(oorder[1:5, c(1, 4, 7, 10, 13, 17)], style = "rmarkdown",
              split.table = Inf, caption = "Top 5 metabolites for type MASLD")
 
-#datatable(Order[,c(1, 4, 7, 10, 13, 17)]) %>%
-#    formatRound(columns=c(2:5), digits = 6)
+datatable(results) |>
+    formatRound(grep("coef|p.value|p.adj|effect", colnames(results)),
+                digits = 6)
 
 ```
 
-There are `r nrow(sig_tab)` significantly associated metabolites for SLD type none vs. MASLD.
+There are `r nrow(sig_tab)` significantly associated metabolites for SLD type
+MASLD vs. none.
 
 
 Significant metabolites adjusted for age and sex (top 3) are visualized in
 boxplot in next figure. Points are colored according to sample sex.
 
-```{r, BP_ADMA, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+```{r BP_Glu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
 box_plot <- function(data, aes, analyte) {
     ggplot(data, aes) +
         geom_jitter(position = position_jitter(0.24),
-                    aes(colour = 'black' , alpha = 0.5)) + #HCU
+                    aes(colour = Sex , alpha = 0.5, bmi = BMI)) +
         geom_violin(trim = FALSE, aes(alpha = 0.5)) +
         stat_summary(fun = median, geom = "point", shape = 23, size = 2) +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
               axis.title.y = element_blank()) + labs(title = analyte) +
         theme_bw ()
 }
-PLOTLY <- FALSE
+PLOTLY <- TRUE
 ggplotly_or_not <- function(x, interactive = TRUE) {
     if (interactive) ggplotly(x)
     else print(x)
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = ADMA),
-                  analyte = "ADMA")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = Glu),
+                analyte = "Glu")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
-2nd example
-
-```{r, BP_Glu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = Glu),
-                  analyte = "Glu")
+```{r BP_lysoPC, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `lysoPC a C17:0`),
+                analyte = "lysoPC a C17:0")
 ggplotly_or_not(s_1, PLOTLY)
+```
 
+```{r Ile, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ile`),
+                analyte = "Ile")
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r Leu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `Leu`),
+                analyte = "Leu")
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r H1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `H1`),
+                analyte = "H1")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 
