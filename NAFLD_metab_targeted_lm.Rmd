@@ -365,7 +365,7 @@ No difference between age was noted between the MASLD and control (none) groups.
 PCA score plot of the study participants, collored by:
 
 - BMI,
-- Age_10,
+- Age,
 - gender,
 - clinical phenotype (i.e. `sld_type` groups *MASLD* end *none*).
 
@@ -407,7 +407,7 @@ gg_1 <- autoplot(prcomp(scaledData), data = met_data) +
     theme_bw()
 ggplotly_or_not(gg_1, PLOTLY)
 
-#' plot with col Age_10
+#' plot with col Age
 Age <- met_data$Age
 gg_1 <- autoplot(prcomp(scaledData), data = met_data) +
     geom_point(aes(colour = Age), size = (Age/25)) +
@@ -444,7 +444,7 @@ ggplotly_or_not(gg_1, PLOTLY)
 
 ```
 
-The BMI and age do not affect a seperation in the PCA score plots. However, the
+The age does not affect a seperation in the PCA score plot. However, the BMI,
 gender and the sld_type have a similar seperation in the 1st PC (diagonal '/'
 direction). To the topleft, more females without MASLD appear. To the
 bottomright, more males with MASLD appear.
@@ -457,9 +457,9 @@ while short chain carnitines are more depicted in the bottomright corner.
 
 If you have the MAFLD phenotype, your BMI is significant (p<<0.05) higher than
 in the control group. This holds true for both female and male gender.
-After visualizing unsupervised using PCA, a higher BMI and age do not cluster
-together with the MASLD sld_type phenotype, but the gender does (and was
-originally already taken into lm as covariate).
+After visualizing unsupervised using PCA, age does not cluster
+together with the MASLD sld_type phenotype, but the gender and BMI do
+(therefore, it is nessecary to include these into lm as covariates).
 
 
 
