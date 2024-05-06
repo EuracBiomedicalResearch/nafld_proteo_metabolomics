@@ -87,7 +87,7 @@ information regarding the SLD sub-classification.
 
 ```{r directories, echo = FALSE}
 #' General settings
-filename <- " NAFLD_metab_targeted_lm"
+filename <- "NAFLD_metab_targeted_lm"
 
 #' Path to save images to; remove if exists.
 IMAGE_PATH <- paste0("images/", filename, "/")
