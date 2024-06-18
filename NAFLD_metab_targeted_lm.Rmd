@@ -244,13 +244,15 @@ print('nr of samples per sld types:')
 table(masld_phenotype_df$sld_type)
 
 #' merge with metabolomics data
+met_data <- as.data.frame(met_data)
 met_data$AID <- rownames(met_data)
-#dim(met_data)
+
 met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
 #dim(met_data)
+#head(met_data)
 
 #' write to file for manuel inspection
-#handle <- 'data/met_data.txt'
+#handle <- 'data/target_met_data.txt'
 #write.table(met_data, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
@@ -394,7 +396,6 @@ Fixed error for PCA calculation (NAs after scaling) by imputing above.
 
 #' scaling and PCA
 scaledData <- scale(met_data[, metabolites], scale = TRUE)
-scaledData[is.na(scaledData)] <- 0 #NOK but no idea fix how? or just no option to pca, or rm these sampls with min 1 na....
 scPCA <- svd(scaledData)
 scPCA.scores <- scPCA$u %*% diag(scPCA$d)    ## scores
 scPCA.loadings <- scPCA$v                    ## loadings
@@ -841,6 +842,11 @@ s_1 <- box_plot(met_data, aes(x = sld_type, y = `H1`),
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
+```{r save results for sensitivity analysis}
+#' get coef values from both lm models
+lm_original <- results$coef_sld_typeMASLD
+```
+
 
 # Linear model to evaluate SLD types - with BMI
 
@@ -1204,6 +1210,66 @@ ggplotly_or_not(s_1, PLOTLY)
 s_1 <- box_plot(met_data, aes(x = sld_type, y = `Tyr`),
                 analyte = "Tyr")
 ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r save results for sensitivity analysis w BMI}
+#' get coef values from both lm models
+lm_withbmi <- results$coef_sld_typeMASLD
+```
+
+
+# Sensitivity analysis
+
+The coeficients (MASLD vs none) from the linear model to evaluate SLD
+types - original is compared to the linear model to evaluate SLD types - with
+BMI, using a sensitivity analysis.
+
+```{r plot coef from two lm models}
+#' merge coef values from both lm models above
+tmp <-data.frame(featureid = rownames(results),
+                  x = lm_original,
+                  y = lm_withbmi)
+#head(tmp)
+
+#' for equation on plot
+linear_eq <- function(x,y) {
+  #calculate equation (linear regression) and corresponding R2 value for on plot
+  m <- lm(y ~ x -1) #no negative pred conc allowed
+  eq <- as.character(
+    as.expression(
+      substitute(italic(y) == a %.% italic(x) + b*","~~italic(R)^2~"="~r2,
+                 list(a = format(round(coef(m)[1], digits=3),nsmall=3), #rico
+                      b = 0, #format(round(coef(m)[1], digits=3),nsmall=3), #intercept
+                      r2 = format(round(summary(m)$r.squared, digits = 3), nsmall=3)
+                      )
+      )
+    )
+  )
+  return(eq)
+}
+
+#'calculate formula, R2 to add on plot
+equation <- linear_eq(x = tmp$x, y = tmp$y) #eq writen for plot
+print('formula, R2:')
+equation
+
+#' scatterplot with coeff vales
+scatter_plot <- function(data) {
+    ggplot(data, aes(x = x, y = y)) +
+        geom_point(aes(x,y), colour = "gray65") +
+        stat_smooth(method = lm, se = TRUE) + #with standard error
+        geom_text(x = -Inf, y = Inf, label = equation, parse = TRUE, vjust = 1.5, hjust = -0.1) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) +
+        labs(title = 'SLD type coefficients between original and lm model with BMI',
+             x = 'lm model - original',
+             y = 'lm model - with BMI') +
+        theme_bw ()
+}
+
+s_1 <- scatter_plot(tmp)
+ggplotly_or_not(s_1, PLOTLY)
+
 ```
 
 
