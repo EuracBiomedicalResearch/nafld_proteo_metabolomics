@@ -556,7 +556,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  ##after eval, set to 50
         prot_ann[proteins, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
@@ -928,7 +928,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #after eval, set to 50
         prot_ann[proteins, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
