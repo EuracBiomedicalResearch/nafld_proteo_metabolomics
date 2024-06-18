@@ -175,12 +175,28 @@ metabolites <- rownames(met_ann)[met_ann$type != "categorical"]
 
 #' select metabolites dataframe
 met_data <- met_data[, metabolites]
+
+#' Impute missing values using an uniform distribution, after gap filling
+na_unidis <- function(z) {
+    na <- is.na(z)
+    if (any(na)) {
+        min = min(z, na.rm = TRUE)
+        z[na] <- runif(sum(na), min = min/2, max = min)
+    }
+    z
+}
+
+#' Row-wise impute missing values and add the data as a new assay
+tmp <- apply(met_data, MARGIN = 1, na_unidis)
+met_data <- t(tmp)
+
+#' checks
 #head(met_data)    #row samples, cols are metab name, matrix are absol conc
 print('nr of  metabolites included:')
 ncol(met_data)
 print('included metabolites are:')
 colnames(met_data)
-#dim(met_data)
+#dim(met_data) #ok!
 
 ```
 
@@ -372,9 +388,7 @@ PCA score plot of the study participants, collored by:
 Prior the PCA, data is normalized to 0 mean and standard deviation of
 1 (autoscaling). Plot shows the scores and loadings of all subjects in the
 space of the first two PCs, with 33% of total variances explained.
-
-#TODO error because NAs cannot do PCA (wo imputing) -> how fix, ok to rm??? now
-with NA -> 0 done. FINDME!!!
+Fixed error for PCA calculation (NAs after scaling) by imputing above.
 
 ```{r pca, fig.height=5, fig.width=7}
 
@@ -569,7 +583,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #after eval, set to 50
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
@@ -934,7 +948,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #after eval, set to 50
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
