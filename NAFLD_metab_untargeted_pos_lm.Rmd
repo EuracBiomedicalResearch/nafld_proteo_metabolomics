@@ -148,9 +148,11 @@ if (.Platform$OS.type == "unix") {
 
 # Data import
 
-The data from metabolites was converted into the TDF format and can hence be
-loaded and imported using the `tidyfr` R package. Now we read the full data
-which includes general information for each measurement.
+The data from the untargeted metaboliteswere loaded from an Rdata object,
+containing a SummarizedExperiment. This object contained all applied
+normalizations, created in the 'NAFLD_Norm_pos.Rmd' workflow. The
+'norm_lm2_imputed' values were selected, as this approach reduced the observed
+interbatch effects the best.
 
 
 ```{r load_dataset, message = FALSE}
@@ -159,7 +161,8 @@ which includes general information for each measurement.
 #' summarized experiment == res
 
 #' load the summerized Experiment with the feature metadata
-load(file.path(DATA_PATH,'SumExp_NAFLD.RData'))
+#load(file.path(DATA_PATH,'SumExp_NAFLD.RData'))  #only raw and raw_filled
+load(file.path(DATA_PATH,'SumExp_NAFLD_norm.RData'))  #with all normalizations saved
 print('Summary of the NAFLD untargeted metabolomics data:')
 print(res)
 #with var rows, samplenames cols
@@ -168,7 +171,7 @@ print(res)
 #colData(res)   #== samplemetadata
 #rowData(res)   #== variablemetadata, names of rt/mz here too with TF001...
 #res$batch_id   # to extract other samplelist info
-#tmp <- assay(res, 'raw_filled', withDimnames = TRUE) #vmatrix after gap filling
+tmp <- assay(res, 'raw_filled', withDimnames = TRUE) #vmatrix after gap filling
 #head(tmp)
 #dim(tmp)
 
@@ -189,7 +192,8 @@ assays(res)$raw_filled_imputed <- t(tmp)
 #sum(is.na(tmp))  #OK!
 
 #' transpose data, matrix metabolomics
-met_data <- t(assays(res)$raw_filled_imputed)
+#met_data <- t(assays(res)$raw_filled_imputed) #only raw and raw_filled
+met_data <- t(assays(res)$norm_lm2_imputed)  #with all normalizations saved #norm_bb_imputed)
 #colnames(met_data)[1:5]
 #head(met_data)    #row samples, cols are metab 'name', matrix are Into-values
 
@@ -203,7 +207,7 @@ metabolites <- rownames(met_ann)
 
 #' checks
 #dim(met_data)
-print('nr of  metabolic features included:')
+print('nr of metabolic features included:')
 ncol(met_data)
 #print('included metabolites are:')
 #colnames(met_data)
@@ -216,21 +220,30 @@ The loaded data contains the samples as rows, and the metabolite names as
 colums. The measurements of the `met_data` object are the absolute
 concentrations of metabolite per sample, in natural scale.
 
-calculate the CV of the POOL samples, as evaluation criteria further in the lm
-calculations.
+calculate the CV of the POOL QC samples, as evaluation criteria further in the
+lm calculations. Skipped here, see NAFLD_Norm_pos.Rmd for results.
 
 ```{r calculate CV QCs NAFLD set, message = FALSE, warning = FALSE}
-#' calculate the CV for QCs in NAFLD dataset incl. POOL samples
-#' TODO
+#' keep only pool samples
+qc_data <- met_data[grep("_POOL", rownames(met_data)), ]  #code in ID for NAFLD participants
+#dim(qc_data)
+#rownames(qc_data)
+qc_data[1:10,1:10]
 
-#' save in the met_ann
-met_ann$cv_qc_chris <- 0 #TODO!!!!! calc CV of POOL and save @met_ann as col
+#' calculate the CVs for QCs in NAFLD dataset
+#x <- qc_data[,1]  #test, OK!
+cv_values <- apply(qc_data, 2, function(x) sd(x)/mean(x)) #iter col=feats
+matrix_with_CV_values <- data.frame(x=colnames(qc_data), y=cv_values)
+names(matrix_with_CV_values) <- c("CompID", "CV_values")
+
+#' save in the met_ann as column
+met_ann$cv_qc_chris <- cv_values
 
 ```
 
 
 Before proceeding with the data analysis we remove the POOL samples. In addition
-we restrict to samples from the NAFLD study.
+we restrict to samples from the NAFLD study (already ok, only NAFLD in Rdata).
 
 ```{r subset to NAFLD set, message = FALSE, warning = FALSE}
 met_data <- met_data[grep("_008", rownames(met_data)), ]  #code in ID for NAFLD participants
@@ -238,7 +251,7 @@ met_data <- met_data[grep("_008", rownames(met_data)), ]  #code in ID for NAFLD 
 
 ```
 
-To ensure a normal distribution of the metabololits, we perform log2
+To ensure a normal distribution of the metabolites, we perform log2
 transformation. We check the histogram to check sample distribution visually. In
 addition, we check using Sharipo Wilk test for each metabolic feature wheater
 the following applies: " whether we can reject the null hypothesis about the
@@ -277,9 +290,11 @@ percentage <- round(((amount_of_variables_with_normal_distribution/total_amount_
 print('percentage of metabolic features with normal** distribution (%):')  #** i.e. accept the null hypothesis about the normal distribution that the sample comes from a population which has a normal distribution"
 print(percentage)
 
-#' TODO normalization eval FINDME!!!
-
 ```
+
+(**) i.e. accept the null hypothesis about the normal distribution that the
+sample comes from a population which has a normal distribution.
+
 
 ```{r make AID column, message = FALSE, warning = FALSE}
 #' extract only IDs for the AID from filenames eg 20200204_0080243714_POS.mzM
@@ -316,7 +331,7 @@ print('nr of samples per sld types:')
 table(masld_phenotype_df$sld_type)
 
 #' merge with metabolomics data
-#met_data$AID <- rownames(met_data) FINDME reverse?
+#met_data$AID <- rownames(met_data)
 #dim(met_data)
 met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
 #dim(met_data)
@@ -324,6 +339,8 @@ met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
 #' write to file for manuel inspection
 #handle <- file.path(RDATA_PATH, 'untargeted_met_data.txt')
 #write.table(met_data, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+#handle <- file.path(RDATA_PATH, 'untargeted_met_data_T.txt')
+#write.table(t(met_data), file=handle, sep ="\t", row.names = TRUE, col.names = FALSE)
 
 ```
 
@@ -651,14 +668,13 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 
 #' Define for which metabolites the difference in concentration is larger
 #' than a certain proportion of the CV
-#cv_cut <- lapply(comps, function(z) {
-#    z <- sub("coef_", "", z)
-#    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
-#        met_ann[metabolites, "cv_qc_chris"]
-#}) |>
-#    do.call(what = cbind)
-cv_cut <- 0 #TODO!!!!! calc CV of POOL and save @met_ann as col
-#colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
+cv_cut <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #set to 50 after eval
+        met_ann[metabolites, "cv_qc_chris"]
+}) |>
+    do.call(what = cbind)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
 
 #' Use statistical significance for non-categorical traits instead of bool
 sign_cv <- sign_p & cv_cut
@@ -680,7 +696,7 @@ summarized here as well.
 #' merge to p-adj to cv significance summary
 sig_tab <- data.frame(
     `p_adj < 0.05` = colSums(sign_p),
-    `cv thresh` = 0, #colSums(cv_cut), #FINDME!!! todo
+    `cv thresh` = colSums(cv_cut),
     significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
     check.names = FALSE)
 
@@ -881,34 +897,34 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00528), #TODO *5
-                analyte = "FT00528")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+                analyte = "FT00940")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r BP_lysoPC, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `lysoPC a C17:0`),
-#                analyte = "lysoPC a C17:0")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+                analyte = "FT00181")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ile`),
-#                analyte = "Ile")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00689`),
+                analyte = "FT00689")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Leu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Leu`),
-#                analyte = "Leu")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00949`),
+                analyte = "FT00949")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r H1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `H1`),
-#                analyte = "H1")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+                analyte = "FT00528")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 
@@ -1018,7 +1034,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #findme!!! 2*100 of *100? EVAL!!
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #set to 50 after eval
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
@@ -1245,34 +1261,34 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = Glu),  #TODO *5
-#                analyte = "Glu")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+                analyte = "FT00940")
+ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r Leu w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Leu`),
-#                analyte = "leu")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+                analyte = "FT00181")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ala w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ala`),
-#                analyte = "Ala")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+                analyte = "FT00528")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ile`),
-#                analyte = "Ile")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT05130`),
+                analyte = "FT05130")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Tyr w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-#s_1 <- box_plot(met_data, aes(x = sld_type, y = `Tyr`),
-#                analyte = "Tyr")
-#ggplotly_or_not(s_1, PLOTLY)
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT04260`),
+                analyte = "FT04260")
+ggplotly_or_not(s_1, PLOTLY)
 ```
 
 
