@@ -1,8 +1,8 @@
----
-title: "NAFLD_metab_targeted_lm"
-author: "Marilyn De Graeve, Nikola Dordevic, Vinicius Verri Hernandes, Essi Hantikainen, Johannes Rainer"
+﻿---
+title: "NAFLD_metab_untargeted_pos_lm"
+author: "Marilyn De Graeve, Philippine Louail, Nikola Dordevic, Vinicius Verri Hernandes, Essi Hantikainen, Johannes Rainer"
 affiliation: "Eurac Research, Bolzano, Italy"
-date: "2024-03-11"
+date: "2024-05-06"
 graphics: yes
 output:
   BiocStyle::html_document:
@@ -14,7 +14,7 @@ editor_options:
 bibliography: references.bib
 ---
 
-**Modified**: `r file.info("NAFLD_metab_targeted_lm.Rmd")$mtime`<br />
+**Modified**: `r file.info("NAFLD_metab_untargeted_pos_lm.Rmd")$mtime`<br />
 **Compiled**: `r date()`
 
 ```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
@@ -45,13 +45,14 @@ opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
 # Introduction
 
 During this workflow, statistical analyis (linear models) are performed on the
-targeted metabolomics data from the metabolic dysfunction-associated steatotic
-liver disease (MASLD) cohort. MASLD, previously known as NAFLD is the most
-chronic liver disease, affecting more than 30% of global population. The MAFLD
-cohort is a subset of approximatley 353 # participants from the Cooperative
-Health Research in South Tirol (CHRIS) study, which were requested to return for
-a second resampling and additional phenotyping. The NAFLD cohort represent an
-unhealty group with various degrees of steatotic (alcoholic) liver disease
+untargeted metabolomics data (positive ionization mode, 10882 # metabolic
+features) from the metabolic dysfunction-associated steatotic liver disease
+(MASLD) cohort. MASLD, previously known as NAFLD is the most chronic liver
+disease, affecting more than 30% of global population. The MAFLD cohort is a
+subset of approximatley 353 # participants from the Cooperative Health Research
+in South Tirol (CHRIS) study, which were requested to return for a second
+resampling and additional phenotyping. The NAFLD cohort represent an unhealty
+group with various degrees of steatotic (alcoholic) liver disease
 classifications. See [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
 (respectively the rendered html report) for an overview of the data set and the
 definition of the phenotype.
@@ -87,7 +88,7 @@ information regarding the SLD sub-classification.
 
 ```{r directories, echo = FALSE}
 #' General settings
-filename <- "NAFLD_metab_targeted_lm"
+filename <- "NAFLD_metab_untargeted_pos_lm"
 
 #' Path to save images to; remove if exists.
 IMAGE_PATH <- paste0("images/", filename, "/")
@@ -122,6 +123,8 @@ library(plotly)
 library(RColorBrewer)
 library(readxl)
 library(reshape2)
+library(stringr)
+library(SummarizedExperiment)
 library(tidyfr)
 library(vioplot)
 library(writexl)
@@ -145,36 +148,32 @@ if (.Platform$OS.type == "unix") {
 
 # Data import
 
-The data from metabolites was converted into the TDF format and can hence be
-loaded and imported using the `tidyfr` R package. Now we read the full data
-which includes general information for each measurement.
+The data from the untargeted metaboliteswere loaded from an Rdata object,
+containing a SummarizedExperiment. This object contained all applied
+normalizations, created in the 'NAFLD_Norm_pos.Rmd' workflow. The
+'norm_lm2_imputed' values were selected, as this approach reduced the observed
+interbatch effects the best.
 
 
 ```{r load_dataset, message = FALSE}
-#' load TDF using tidyfr
-#list_data_modules(path = DATA_PATH)
-p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2",
-                    path = DATA_PATH)
-met_data <- data(p180)
-met_ann <- labels(p180)
-stopifnot(all(colnames(met_data) == rownames(met_ann)))
-colnames(met_data) <- met_ann$description
-rownames(met_ann) <- met_ann$description
+#' data previously preprocessed by Philippine Louail, load saved Rdata
+#' ls() #find the loaded object names
+#' summarized experiment == res
 
-#' define the columns with metabolite concentrations
-metabolites <- rownames(met_ann)[met_ann$type != "categorical"]
+#' load the summerized Experiment with the feature metadata
+#load(file.path(DATA_PATH,'SumExp_NAFLD.RData'))  #only raw and raw_filled
+load(file.path(DATA_PATH,'SumExp_NAFLD_norm.RData'))  #with all normalizations saved
+print('Summary of the NAFLD untargeted metabolomics data:')
+print(res)
+#with var rows, samplenames cols
 
-#' problem in calculating lm below for
-#'   'PC aa C30:2' #NOK, only 8 col!!
-#'   'Histamine' NOK, only 8 col!!
-#' because no values for each typeSLD, due to lot NA values
-#' option 1: rm metabolites, not done
-#metabolites <- metabolites[metabolites != 'PC aa C30:2']
-#metabolites <- metabolites[metabolites != 'Histamine']
-#' option2: retain only none and MASLD, see done later
-
-#' select metabolites dataframe
-met_data <- met_data[, metabolites]
+#' Info: to see what's in the summarized experiment
+#colData(res)   #== samplemetadata
+#rowData(res)   #== variablemetadata, names of rt/mz here too with TF001...
+#res$batch_id   # to extract other samplelist info
+tmp <- assay(res, 'raw_filled', withDimnames = TRUE) #vmatrix after gap filling
+#head(tmp)
+#dim(tmp)
 
 #' Impute missing values using an uniform distribution, after gap filling
 na_unidis <- function(z) {
@@ -187,16 +186,33 @@ na_unidis <- function(z) {
 }
 
 #' Row-wise impute missing values and add the data as a new assay
-tmp <- apply(met_data, MARGIN = 1, na_unidis)
-met_data <- t(tmp)
+tmp <- apply(assay(res, "raw_filled"), MARGIN = 1, na_unidis)
+assays(res)$raw_filled_imputed <- t(tmp)
+#head(tmp)
+#sum(is.na(tmp))  #OK!
+
+#' transpose data, matrix metabolomics
+#met_data <- t(assays(res)$raw_filled_imputed) #only raw and raw_filled
+met_data <- t(assays(res)$norm_lm2_imputed)  #with all normalizations saved #norm_bb_imputed)
+#colnames(met_data)[1:5]
+#head(met_data)    #row samples, cols are metab 'name', matrix are Into-values
+
+#' get/make labels of metabolites
+met_ann <- rowData(res)
+#rownames(met_ann)[1:5]
+
+#' get 'names' of metabolic features
+metabolites <- rownames(met_ann)
+#metabolites[1:5]
 
 #' checks
-#head(met_data)    #row samples, cols are metab name, matrix are absol conc
-print('nr of  metabolites included:')
+#dim(met_data)
+print('nr of metabolic features included:')
 ncol(met_data)
-print('included metabolites are:')
-colnames(met_data)
-#dim(met_data) #ok!
+#print('included metabolites are:')
+#colnames(met_data)
+#print('included samples are:')
+#rownames(met_data)
 
 ```
 
@@ -204,20 +220,91 @@ The loaded data contains the samples as rows, and the metabolite names as
 colums. The measurements of the `met_data` object are the absolute
 concentrations of metabolite per sample, in natural scale.
 
-To ensure a normal distribution of the metabololits, we perform log2
-transformation.
+calculate the CV of the POOL QC samples, as evaluation criteria further in the
+lm calculations. Skipped here, see NAFLD_Norm_pos.Rmd for results.
+
+```{r calculate CV QCs NAFLD set, message = FALSE, warning = FALSE}
+#' keep only pool samples
+qc_data <- met_data[grep("_POOL", rownames(met_data)), ]  #code in ID for NAFLD participants
+#dim(qc_data)
+#rownames(qc_data)
+#qc_data[1:10,1:10]
+
+#' calculate the CVs for QCs in NAFLD dataset
+#x <- qc_data[,1]  #test, OK!
+cv_values <- apply(qc_data, 2, function(x) sd(x)/mean(x)) #iter col=feats
+matrix_with_CV_values <- data.frame(x=colnames(qc_data), y=cv_values)
+names(matrix_with_CV_values) <- c("CompID", "CV_values")
+
+#' save in the met_ann as column
+met_ann$cv_qc_chris <- cv_values
+
+```
+
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study (already ok, only NAFLD in Rdata).
+
+```{r subset to NAFLD set, message = FALSE, warning = FALSE}
+met_data <- met_data[grep("_008", rownames(met_data)), ]  #code in ID for NAFLD participants
+#dim(met_data)
+
+```
+
+To ensure a normal distribution of the metabolites, we perform log2
+transformation. We check the histogram to check sample distribution visually. In
+addition, we check using Sharipo Wilk test for each metabolic feature wheater
+the following applies: " whether we can reject the null hypothesis about the
+normal distribution that the sample comes from a population which has a normal
+distribution?" (**).
 
 ```{r log2-transformation, message = FALSE}
 #' log2 scaling of absolute abundances metabolites
 met_data <- log2(met_data)
 
+#' plot histogram
+hist(met_data, main ="")
+
+#' normality testing for each metabolic feature
+Shapiro_Wilk_test <- function(sampleMatrix) {
+    #' returns the number of normal distribution per variable
+
+    #' extra step because intensity in some columns are identical eg. 0
+    nrow_matrix <- nrow(sampleMatrix)
+    ncol_matrix <- ncol(sampleMatrix)
+    random_matrix <- replicate(ncol_matrix, runif(nrow_matrix)*10E-10)
+    sampleMatrix <- sampleMatrix + random_matrix
+
+    shapiro20 <- sapply(sampleMatrix, shapiro.test)   #apply Shapiro Wilk test on each column (=metabolite)
+    shapirop20 <- shapiro20[2,]                                     #Retrieve p-values
+    shapirop20 <- p.adjust(shapirop20,method="holm",n=length(shapirop20))
+    numbernormal20 <-sum(shapirop20 > 0.05)       #chosen alpha value = 0.05
+
+    numbernormal20  #Count number of columns which are normally distributed
+}
+
+#report normality
+amount_of_variables_with_normal_distribution <- Shapiro_Wilk_test(as.data.frame(met_data))
+total_amount_of_variables <- ncol(met_data)
+percentage <- round(((amount_of_variables_with_normal_distribution/total_amount_of_variables)*100), digits=2)
+print('percentage of metabolic features with normal** distribution (%):')  #** i.e. accept the null hypothesis about the normal distribution that the sample comes from a population which has a normal distribution"
+print(percentage)
+
 ```
 
-Before proceeding with the data analysis we remove the POOL samples. In addition
-we restrict to samples from the NAFLD study.
+(**) i.e. accept the null hypothesis about the normal distribution that the
+sample comes from a population which has a normal distribution.
 
-```{r subset to NAFLD set, message = FALSE, warning = FALSE}
-met_data <- met_data[grep("^008", rownames(met_data)), ]
+
+```{r make AID column, message = FALSE, warning = FALSE}
+#' extract only IDs for the AID from filenames eg 20200204_0080243714_POS.mzM
+out <- str_split(rownames(met_data), "_")
+out <- as.data.frame(do.call(rbind, out))
+#colnames(out)
+
+met_data <- data.frame(met_data, out$V2)
+colnames(met_data)[colnames(met_data) == 'out.V2'] <- 'AID'
+#head(met_data)
 
 ```
 
@@ -244,16 +331,16 @@ print('nr of samples per sld types:')
 table(masld_phenotype_df$sld_type)
 
 #' merge with metabolomics data
-met_data <- as.data.frame(met_data)
-met_data$AID <- rownames(met_data)
-
+#met_data$AID <- rownames(met_data)
+#dim(met_data)
 met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
 #dim(met_data)
-#head(met_data)
 
 #' write to file for manuel inspection
-#handle <- 'data/target_met_data.txt'
+#handle <- file.path(RDATA_PATH, 'untargeted_met_data.txt')
 #write.table(met_data, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+#handle <- file.path(RDATA_PATH, 'untargeted_met_data_T.txt')
+#write.table(t(met_data), file=handle, sep ="\t", row.names = TRUE, col.names = FALSE)
 
 ```
 
@@ -262,8 +349,7 @@ for the less populated `sld_type` groups (*MetALD* end *SLD*), only *none* and
 *MASLD* types are considered further.
 
 ```{r keep only none and MASLD types}
-#' because problem 2 metabolites only NAs in some sld types,
-#' keep only none and MASLD
+#' keep only none and MASLD because most populated phenotypes
 met_data <- met_data[met_data$sld_type %in% c('none', 'MASLD'), ]
 met_data$sld_type <- droplevels(met_data$sld_type)
 met_data$Sex <- factor(met_data$Sex)
@@ -331,6 +417,7 @@ as.numeric(unlist(normality[2]))
 #' p < 0.05 --> NO normal distribution!!!
 print('NO normal distribution, "you cannot reject the null hypothesis about the normal distribution that the sample comes from a population which has a normal distribution". ')
 
+
 MASLD <- df[df$sld_type == 2,]
 normality <- shapiro.test(MASLD$BMI)
 print('p-value normality of BMI for none group is:')
@@ -390,12 +477,12 @@ PCA score plot of the study participants, collored by:
 Prior the PCA, data is normalized to 0 mean and standard deviation of
 1 (autoscaling). Plot shows the scores and loadings of all subjects in the
 space of the first two PCs, with 33% of total variances explained.
-Fixed error for PCA calculation (NAs after scaling) by imputing above.
 
 ```{r pca, fig.height=5, fig.width=7}
 
 #' scaling and PCA
 scaledData <- scale(met_data[, metabolites], scale = TRUE)
+scaledData[is.na(scaledData)] <- 0 #NOK but no idea fix how? or just no option to pca, or rm these sampls with min 1 na....
 scPCA <- svd(scaledData)
 scPCA.scores <- scPCA$u %*% diag(scPCA$d)    ## scores
 scPCA.loadings <- scPCA$v                    ## loadings
@@ -584,7 +671,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #after eval, set to 50
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #set to 50 after eval
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
@@ -630,8 +717,7 @@ Export results for inspection:
 
 ```{r export-results}
 results <- data.frame(
-    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
-                                   "biochemical_name", "cv_qc_chris")],
+    met_ann[rownames(lm_output), c("mzmed", "rtmed", "cv_qc_chris")],
     lm_output,
     diff_perc
 )
@@ -641,7 +727,7 @@ results <- data.frame(
 
 #' write to file for manual inspection,
 #' inclusing inspection of the CV-value of each metabolite
-handle <- 'data/lm_output_results.txt'
+handle <- file.path(RDATA_PATH, 'lm_output_results.txt')
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
@@ -759,7 +845,7 @@ The (static) table with the significant metabolites is shown below:
 
 ```{r table-sig-sex, results = "asis", echo = FALSE}
 significant_table <- function(x, comparison = character(),
-                              columns = c("analyte_class", "cv_qc_chris")) {
+                              columns = c("mzmed", "rtmed", "cv_qc_chris")) {
     sigs <- x[, paste0("significant_", comparison)]
     columns <- c(columns, paste0(c("coef_", "p.adj_", "effectSize_"),
                                  comparison))
@@ -783,7 +869,7 @@ The full results table is shown below.
 ##
 oorder <- results[order(results[, "p.adj_sld_typeMASLD"]), ]
 
-pandoc.table(oorder[1:5, c(1, 4, 7, 10, 13, 17)], style = "rmarkdown",
+pandoc.table(oorder[1:5, c(1, 2, 4, 7, 10, 13, 17)], style = "rmarkdown",
              split.table = Inf, caption = "Top 5 metabolites for type MASLD")
 
 datatable(results) |>
@@ -812,33 +898,33 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = Glu),
-                analyte = "Glu")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+                analyte = "FT00940")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r BP_lysoPC, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `lysoPC a C17:0`),
-                analyte = "lysoPC a C17:0")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+                analyte = "FT00181")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ile`),
-                analyte = "Ile")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00689`),
+                analyte = "FT00689")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Leu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Leu`),
-                analyte = "Leu")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00949`),
+                analyte = "FT00949")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r H1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `H1`),
-                analyte = "H1")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+                analyte = "FT00528")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
@@ -846,7 +932,6 @@ ggplotly_or_not(s_1, PLOTLY)
 #' get coef values from both lm models
 lm_original <- results$coef_sld_typeMASLD
 ```
-
 
 # Linear model to evaluate SLD types - with BMI
 
@@ -954,7 +1039,7 @@ colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
 #' than a certain proportion of the CV
 cv_cut <- lapply(comps, function(z) {
     z <- sub("coef_", "", z)
-    diff_perc[, paste0("diff_perc_", z)] > 50 *  #after eval, set to 50
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  #set to 50 after eval
         met_ann[metabolites, "cv_qc_chris"]
 }) |>
     do.call(what = cbind)
@@ -1000,8 +1085,7 @@ Export results for inspection:
 
 ```{r export-results w BMI}
 results <- data.frame(
-    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
-                                   "biochemical_name", "cv_qc_chris")],
+    met_ann[rownames(lm_output), c("mzmed", "rtmed", "cv_qc_chris")],
     lm_output,
     diff_perc
 )
@@ -1011,7 +1095,7 @@ results <- data.frame(
 
 #' write to file for manual inspection,
 #' inclusing inspection of the CV-value of each metabolite
-handle <- 'data/lm_output_results.txt'
+handle <- file.path(RDATA_PATH, 'lm_output_results-BMI.txt')
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
@@ -1129,7 +1213,7 @@ The (static) table with the significant metabolites is shown below:
 
 ```{r table-sig-sex w BMI, results = "asis", echo = FALSE}
 significant_table <- function(x, comparison = character(),
-                              columns = c("analyte_class", "cv_qc_chris")) {
+                              columns = c("mzmed", "rtmed", "cv_qc_chris")) {
     sigs <- x[, paste0("significant_", comparison)]
     columns <- c(columns, paste0(c("coef_", "p.adj_", "effectSize_"),
                                  comparison))
@@ -1182,33 +1266,33 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = Glu),
-                analyte = "Glu")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+                analyte = "FT00940")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r Leu w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Leu`),
-                analyte = "leu")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+                analyte = "FT00181")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ala w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ala`),
-                analyte = "Ala")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+                analyte = "FT00528")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Ile`),
-                analyte = "Ile")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT05130`),
+                analyte = "FT05130")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Tyr w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `Tyr`),
-                analyte = "Tyr")
+s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT04260`),
+                analyte = "FT04260")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
@@ -1216,7 +1300,6 @@ ggplotly_or_not(s_1, PLOTLY)
 #' get coef values from both lm models
 lm_withbmi <- results$coef_sld_typeMASLD
 ```
-
 
 # Sensitivity analysis
 
