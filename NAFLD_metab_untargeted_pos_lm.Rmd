@@ -727,8 +727,8 @@ results <- data.frame(
 
 #' write to file for manual inspection,
 #' inclusing inspection of the CV-value of each metabolite
-handle <- file.path(RDATA_PATH, 'lm_output_results.txt')
-write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+#handle <- file.path(RDATA_PATH, 'lm_output_results.txt')
+#write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
 
@@ -933,6 +933,21 @@ ggplotly_or_not(s_1, PLOTLY)
 lm_original <- results$coef_sld_typeMASLD
 ```
 
+In addition, we also export the results table from the lm containing the m/z,
+rt, metabolite feature ID, statistics (coef, es) and p-vlues (adj. p-value) for
+subsequent analysis (eg pathway enrichment and analysis).
+
+```{r export-lm-results}
+#' add rownames as a column
+results$AID <- rownames(results)
+
+#' write results (original order) for further analysis
+handle <- file.path(DATA_PATH, 'lm_output_results_metab.txt')
+write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+
+```
+
+
 # Linear model to evaluate SLD types - with BMI
 
 To identify metabolites related with the 2 (none, MASLD) of the 4 SLD types
@@ -1095,8 +1110,8 @@ results <- data.frame(
 
 #' write to file for manual inspection,
 #' inclusing inspection of the CV-value of each metabolite
-handle <- file.path(RDATA_PATH, 'lm_output_results-BMI.txt')
-write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+#handle <- file.path(RDATA_PATH, 'lm_output_results-BMI.txt')
+#write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
 
@@ -1300,6 +1315,21 @@ ggplotly_or_not(s_1, PLOTLY)
 #' get coef values from both lm models
 lm_withbmi <- results$coef_sld_typeMASLD
 ```
+
+In addition, we also export the results table from the lm containing the m/z,
+rt, metabolite feature ID, statistics (coef, es) and p-vlues (adj. p-value) for
+subsequent analysis (eg pathway enrichment and analysis).
+
+```{r export-lm-results-w-BMI}
+#' add rownames as a column
+results$AID <- rownames(results)
+
+#' write results (original order) for further analysis
+handle <- file.path(DATA_PATH, 'lm_output_results_metab-BMI.txt')
+write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+
+```
+
 
 # Sensitivity analysis
 
