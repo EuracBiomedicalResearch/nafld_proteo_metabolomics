@@ -296,12 +296,31 @@ Further called "liver_stiffness".
 ```{r load-liver-param}
 #' from same excel loaded above, already added to met_data
 #colnames(met_data)
+
+#' remove samples with  naab12 (liver stiffness IQR) > 30
+dim(met_data)
+met_data <- met_data[met_data$liver_stiffnes_iqr <= 30.0, ] #no one above, have some NAs though
+dim(met_data)
+
+met_data$T2D <- factor(met_data$T2D)
 summary(met_data[, c("liver_stiffness", "T2D")])
 
 ```
 
-liver_stiffness is numeric, continuous ranging between 1.5 - 34. A higher score 
+liver_stiffness is numeric, continuous ranging between 1.5 - 34.4. A higher score 
 is more liver stiffness, aka more steatosis.
+After initial run, the 1 participant with the upper value of 
+liver_stiffness = 34.4 was removed, as the median = 4.8 with the second highest 
+participant with a liver_stiffness = 18.4.
+
+```{r subset-liver_stiffness-outlier}
+#' remove 1 participant with max liver_stiffness value
+dim(met_data)
+met_data <- met_data[met_data$liver_stiffness < 34.4, ]
+dim(met_data)
+
+```
+
 
 
 # Evaluation of the various variables in the data set
@@ -881,12 +900,12 @@ In addition, we also export the results table from the lm containing the m/z,
 rt, metabolite feature ID, statistics (coef, es) and p-vlues (adj. p-value) for
 subsequent analysis (eg pathway enrichment and analysis).
 
-```{r export-lm-results, eval = FALSE}
+```{r export-lm-results}
 #' add rownames as a column
 results$AID <- rownames(results)
 
 #' write results (original order) for further analysis
-handle <- file.path(DATA_PATH, paste0(filename, '_results.txt'))
+handle <- file.path(RDATA_PATH, paste0(filename, '_results.txt'))
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```

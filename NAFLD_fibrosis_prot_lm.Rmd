@@ -1,6 +1,6 @@
 ---
 title: "NAFLD_fibrosis_prot_lm"
-author: Marilyn De Graeve, Johannes Rainer, Christoph Grander"
+author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
 affiliation: "Eurac Research, Bolzano, Italy"
 date: "2025-01-27"
 graphics: yes
@@ -108,8 +108,8 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-#DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
-DATA_PATH <- "."
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- "."
 
 ```
 
@@ -220,8 +220,8 @@ prot_data <- merge(prot_data, masld_phenotype_df, by = 'AID')
 #dim(prot_data)
 
 #' write to file for manuel inspection
-handle <- file.path(RDATA_PATH, 'prot_data.txt')
-write.table(prot_data, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+#handle <- file.path(RDATA_PATH, 'prot_data.txt')
+#write.table(prot_data, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
 
@@ -256,12 +256,23 @@ prot_data$Age_10 <- prot_data$Age / 10
 ```{r load-liver-param}
 #' from same excel loaded above, already added to prot_data
 #colnames(prot_data)
+prot_data$T2D <- factor(prot_data$T2D)
 summary(prot_data[, c("FIB4", "T2D")])
 
 ```
 
 FIB4 is numeric, continuous ranging between 0.3 - 7.9. A higher score is more 
-liver fibrosis.
+liver fibrosis. After initial run, the 1 participant with the upper value of 
+FIB4 = 7.9 was removed, as the median = 1.2 with the second highest 
+participant with a FIB4 = 3.0.
+
+```{r subset-fib4-outlier}
+#' remove 1 participant with max fib4 value
+dim(prot_data)
+prot_data <- prot_data[prot_data$FIB4 < 7.8876, ]
+dim(prot_data)
+
+```
 
 
 # Evaluation of the various variables in the data set
@@ -282,7 +293,7 @@ and female participants. A strong (positive) relationship is however visible
 between FIB4 and age. A slight negative relationship seems to be present between 
 FIB4 and BMI."
 
-```{r violin-plots, fig.height=8, fig.width=7}
+```{r violin-plots, fig.height=8, fig.width=7, eval = FALSE}
 #violin sex vs FIB4 
 vioplot(split(prot_data$FIB4,
               prot_data$Sex),
@@ -299,13 +310,13 @@ vioplot(split(prot_data$Age,
         xlab = "FIB4_bin", ylab = "Age",
         main = "FIB4_bin versus Age")
 
-#violin BMI vs FIB4 
+#violin BMI vs FIB4
 vioplot(split(prot_data$BMI,
               prot_data$FIB4_bin),
         xlab = "FIB4_bin", ylab = "BMI",
         main = "BMI_bin versus BMI")
 
-#violin T2D vs FIB4 
+#violin T2D vs FIB4
 vioplot(split(prot_data$FIB4,
               prot_data$T2D),
         xlab = "T2D", ylab = "FIB4",
@@ -329,7 +340,7 @@ Prior the PCA, data is normalized to 0 mean and standard deviation of
 space of the first two PCs, with 14% of total variances explained.
 
 
-```{r pca, fig.height=7, fig.width=7}
+```{r pca, fig.height=7, fig.width=7, eval = FALSE}
 
 #' scaling and PCA
 scaledData <- scale(prot_data[, proteins], scale = TRUE)
@@ -845,12 +856,12 @@ In addition, we also export the results table from the lm containing the m/z,
 rt, metabolite feature ID, statistics (coef, es) and p-vlues (adj. p-value) for
 subsequent analysis (eg pathway enrichment and analysis).
 
-```{r export-lm-results, eval = FALSE}
+```{r export-lm-results}
 #' add rownames as a column
 results$AID <- rownames(results)
 
 #' write results (original order) for further analysis
-handle <- file.path(DATA_PATH, paste0(filename, '_results.txt'))
+handle <- file.path(RDATA_PATH, paste0(filename, '_results.txt'))
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```

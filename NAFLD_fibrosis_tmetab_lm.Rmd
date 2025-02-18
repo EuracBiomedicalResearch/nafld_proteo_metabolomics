@@ -108,8 +108,8 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-#DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
-DATA_PATH <- "."
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- "."
 
 ```
 
@@ -284,11 +284,23 @@ Linear score calculated from standard clinical parameters. Further called FIB4.
 ```{r load-liver-param}
 #' from same excel loaded above, already added to met_data
 #colnames(met_data)
+met_data$T2D <- factor(met_data$T2D)
 summary(met_data[, c("FIB4", "T2D")])
 
 ```
+
 FIB4 is numeric, continuous ranging between 0.3 - 7.9. A higher score is more 
-liver fibrosis.
+liver fibrosis. After initial run, the 1 participant with the upper value of 
+FIB4 = 7.9 was removed, as the median = 1.2 with the second highest 
+participant with a FIB4 = 3.0.
+
+```{r subset-fib4-outlier}
+#' remove 1 participant with max fib4 value
+dim(met_data)
+met_data <- met_data[met_data$FIB4 < 7.8876, ]
+dim(met_data)
+
+```
 
 
 # Evaluation of the various variables in the data set
@@ -309,7 +321,7 @@ and female participants. A strong (positive) relationship is however visible
 between FIB4 and age. A slight negative relationship seems to be present between 
 FIB4 and BMI."
 
-```{r violin-plots, fig.height=8, fig.width=7}
+```{r violin-plots, fig.height=8, fig.width=7, eval = FALSE}
 #violin sex vs FIB4 
 vioplot(split(met_data$FIB4,
               met_data$Sex),
@@ -326,13 +338,13 @@ vioplot(split(met_data$Age,
         xlab = "FIB4_bin", ylab = "Age",
         main = "FIB4_bin versus Age")
 
-#violin BMI vs FIB4 
+#violin BMI vs FIB4
 vioplot(split(met_data$BMI,
               met_data$FIB4_bin),
         xlab = "FIB4_bin", ylab = "BMI",
         main = "BMI_bin versus BMI")
 
-#violin T2D vs FIB4 
+#violin T2D vs FIB4
 vioplot(split(met_data$FIB4,
               met_data$T2D),
         xlab = "T2D", ylab = "FIB4",
@@ -356,7 +368,7 @@ Prior the PCA, data is normalized to 0 mean and standard deviation of
 space of the first two PCs, with 33% of total variances explained.
 Fixed error for PCA calculation (NAs after scaling) by imputing above.
 
-```{r pca, fig.height=5, fig.width=7}
+```{r pca, fig.height=5, fig.width=7, eval = FALSE}
 
 #' scaling and PCA
 scaledData <- scale(met_data[, metabolites], scale = TRUE)
@@ -868,12 +880,12 @@ In addition, we also export the results table from the lm containing the m/z,
 rt, metabolite feature ID, statistics (coef, es) and p-vlues (adj. p-value) for
 subsequent analysis (eg pathway enrichment and analysis).
 
-```{r export-lm-results, eval = FALSE}
+```{r export-lm-results}
 #' add rownames as a column
 results$AID <- rownames(results)
 
 #' write results (original order) for further analysis
-handle <- file.path(DATA_PATH, paste0(filename, '_results.txt'))
+handle <- file.path(RDATA_PATH, paste0(filename, '_results.txt'))
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
