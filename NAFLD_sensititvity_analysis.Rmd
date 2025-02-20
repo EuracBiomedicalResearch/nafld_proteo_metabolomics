@@ -105,10 +105,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' prep for plotting
 PLOTLY <- TRUE
@@ -130,28 +130,42 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
+
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
 # 0.5 and > 2 intersting, NO too many
-#summary(tmp)
-#dim(tmp)
-hist(tmp$log2FC)
-#tmp <- tmp[tmp$log2FC < 0.5 | tmp$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
-#tmp <- tmp[tmp$FC > 25, ] #5 left
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]  #10 left
-
-
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
+    sensit, style = "rmarkdown", split.table = Inf,
     caption = paste0("Coeficients of lm models using proteins ",
                      "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
 
 ```
 
@@ -185,10 +199,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' scatterplot with coeff vales
 scatter_plot <- function(data) {
@@ -204,24 +218,42 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
 
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
-#summary(tmp)
-hist(tmp$log2FC)
-#dim(tmp)
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
-    caption = paste0("Coeficients of lm models using metabolites ",
-                     "between MASLD and control (none) participants ",
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
 
 ```
 
@@ -255,10 +287,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' scatterplot with coeff vales
 scatter_plot <- function(data) {
@@ -273,24 +305,42 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
 
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
-#summary(tmp)
-hist(tmp$log2FC)
-#dim(tmp)
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
+    sensit, style = "rmarkdown", split.table = Inf,
     caption = paste0("Coeficients of lm models using proteins ",
-                     "between MASLD and control (none) participants ",
+                     "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
 
 ```
 
@@ -324,10 +374,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' scatterplot with coeff vales
 scatter_plot <- function(data) {
@@ -342,26 +392,42 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
 
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
-#summary(tmp)
-hist(tmp$log2FC)
-#dim(tmp)
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]
-
-
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
-    caption = paste0("Coeficients of lm models using metabolites ",
-                     "between MASLD and control (none) participants ",
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
 
 ```
 
@@ -395,10 +461,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' scatterplot with coeff vales
 scatter_plot <- function(data) {
@@ -413,26 +479,45 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
 
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
-#summary(tmp)
-hist(tmp$log2FC)
-#dim(tmp)
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
+    sensit, style = "rmarkdown", split.table = Inf,
     caption = paste0("Coeficients of lm models using proteins ",
-                     "between MASLD and control (none) participants ",
+                     "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
 
 ```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
+
+```
+
 
 
 # 6 Steatosis - tmetab (naab13)
@@ -464,10 +549,10 @@ BMI, using a sensitivity analysis.
 
 ```{r}
 #' merge coef values from both lm models above
-tmp <-data.frame(featureid = rownames(results),
+sensit <-data.frame(featureid = rownames(results),
                   x = lm_masld,
                   y = lm_none)
-#head(tmp)
+#head(sensit)
 
 #' scatterplot with coeff vales
 scatter_plot <- function(data) {
@@ -482,26 +567,42 @@ scatter_plot <- function(data) {
         theme_bw ()
 }
 
-s_1 <- scatter_plot(tmp)
+s_1 <- scatter_plot(sensit)
 ggplotly_or_not(s_1, PLOTLY)
 
+```
 
+```{r, eval = FALSE}
 #' FC for see diff between 2 datasets
-tmp$FC <- abs(tmp$x + 0.00000001) / abs(tmp$y + 0.00000001)
-tmp$log2FC <- log2(abs(tmp$FC))
-#summary(tmp)
-hist(tmp$log2FC)
-#dim(tmp)
-tmp <- tmp[tmp$log2FC < -5 | tmp$log2FC > +5, ]
-
-
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
 
 #' table with highest dev coef
 pandoc.table(
-    tmp, style = "rmarkdown", split.table = Inf,
-    caption = paste0("Coeficients of lm models using metabolites ",
-                     "between MASLD and control (none) participants ",
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
                      ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without medication")
 
 ```
 
