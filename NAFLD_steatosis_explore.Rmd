@@ -501,10 +501,9 @@ s_1 <- scatter_plot(met_prot_data, aes(x = liver_fat, y = visual_fat),
 ggplotly_or_not(s_1, PLOTLY)
 
 #' boxplot
-boxplot(met_prot_data$liver_fat ~ met_prot_data$visual_fat)
 plot(met_prot_data$liver_fat ~ met_prot_data$visual_fat,
     col = met_prot_data$T2D, cex = (met_prot_data$Age_10 /10),
-    main = 'naab13 vs naab14, with T2D and Age info', add = TRUE)
+    main = 'naab13 vs naab14, with T2D and Age info')
 
 ```
 
