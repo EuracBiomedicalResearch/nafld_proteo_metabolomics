@@ -89,12 +89,13 @@ score of 2 – 3.
 
 - *naab11*: liver stiffness (higher values are worse). Values for participants 
   that have a naab12 (liver stiffness IQR) > 30 should be either removed or 
-  taken with care.
-- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness 
+  taken with care. "liver_stiffness"
+- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness. 
+    "liver_stiffnes_iqr" 
   measurements. Values below 30 are considered OK.
-- *naab13*: liver fat. Can be binarized at an absolute value of 288.
+- *naab13*: liver fat. Can be binarized at an absolute value of 288. "liver_fat"
 - *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1 
-  to 3. Values 2 and 3 can be considered steatotic.
+  to 3. Values 2 and 3 can be considered steatotic. "visual_fat"
 
 This parameter will be used as the target for a biomarker search in *MASLD* 
 participants.
