@@ -352,7 +352,7 @@ Only the *MASLD* type are considered further.
 ```{r keep only none and MASLD types}
 #' because problem 2 proteins only NAs in some sld types,
 #' keep only none and MASLD
-met_prot_data <- met_prot_data[met_prot_data$sld_type %in% c('MASLD'), ] #'none', 
+met_prot_data <- met_prot_data[met_prot_data$sld_type %in% c('none', 'MASLD'), ] #'
 met_prot_data$sld_type <- droplevels(met_prot_data$sld_type)
 met_prot_data$sld_type <- factor(met_prot_data$sld_type)
 met_prot_data$Sex <- factor(met_prot_data$Sex)
