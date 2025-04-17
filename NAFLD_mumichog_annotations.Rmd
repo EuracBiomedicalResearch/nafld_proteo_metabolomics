@@ -1,5 +1,5 @@
 ---
-title: "Mummichog annotation - NAFLD_masld"
+title: "Mummichog annotation on NAFLD umetab (pos) after lm with liver_fat_cat2"
 author: "Marilyn De Graeve, Johannes Rainer"
 affiliation: "Eurac Research, Bolzano, Italy"
 date: "2024-12-13"
@@ -13,25 +13,25 @@ editor_options:
     wrap: 72
 ---
 
-**Modified**: `r file.info("NAFLD_mummichog_annotations.Rmd")$mtime`<br />
+**Modified**: `r file.info("NAFLD_umetabpos_mummichog_annotations.Rmd")$mtime`<br />
 **Compiled**: `r date()`
 
 ```{r configuration, include = TRUE, cached = FALSE}
 
 #' introduction
 STUDY <- "NAFLD cohort"
-TARGET <- "MASLD: (= Metabolic Dysfunction Associated Steatotic Liver Disease) "
+TARGET <- "liver_fat_cat2"
 DATASET <- "untargeted metabolomics, positive mode"
 
 #' settings
-FILENAME <- "NAFLD_MASLD_umetabpos"
+FILENAME <- "NAFLD_umetabpos_naab13cat2"
 LOCATION <- 'local' #'server' OR 'local', change in chunk directories if needed
 
 #' target variables
 #print('target of the linear regression model:')
-TARGET_COLNAME <- 'sld_type'
+TARGET_COLNAME <- 'liver_fat_cat2'
 #print('more concrete defined target of the linear regression model:')
-TARGET_LMNAME <- 'sld_typeMASLD'
+TARGET_LMNAME <- 'liver_fat_cat22'
 
 ```
 
@@ -39,7 +39,7 @@ TARGET_LMNAME <- 'sld_typeMASLD'
 ```{r style, echo = FALSE, results = "hide", message = FALSE}
 #' rmarkdown format settings
 library("BiocStyle")
-#library("kableExtra") #!!!TODO install....
+library("kableExtra")
 library("knitr")
 library("rmarkdown")
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,

@@ -131,20 +131,6 @@ library(writexl)
 
 ```
 
-## Computation
-
-```{r parallel_processing_setup, message=FALSE}
-#' Set up parallel processing using multiple cores get the number of
-#' cpus allocated by queueing system or fall back to 7
-NR_CORES <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE", 8)) - 1L
-if (.Platform$OS.type == "unix") {
-    register(MulticoreParam(NR_CORES))
-} else {
-    register(bpstart(SnowParam(NR_CORES)))
-}
-
-```
-
 
 # Data import
 
@@ -232,8 +218,8 @@ qc_data <- met_data[grep("_POOL", rownames(met_data)), ]  #code in ID for NAFLD 
 
 #' calculate the CVs for QCs in NAFLD dataset
 #x <- qc_data[,1]  #test, OK!
-cv_values <- apply(qc_data, 2, function(x) sd(x)/mean(x)) #iter col=feats
-matrix_with_CV_values <- data.frame(x=colnames(qc_data), y=cv_values)
+cv_values <- apply(qc_data, 2, function(x) sd(x) / mean(x)) #iter col=feats
+matrix_with_CV_values <- data.frame(x = colnames(qc_data), y = cv_values)
 names(matrix_with_CV_values) <- c("CompID", "CV_values")
 
 #' save in the met_ann as column
@@ -272,13 +258,13 @@ Shapiro_Wilk_test <- function(sampleMatrix) {
     #' extra step because intensity in some columns are identical eg. 0
     nrow_matrix <- nrow(sampleMatrix)
     ncol_matrix <- ncol(sampleMatrix)
-    random_matrix <- replicate(ncol_matrix, runif(nrow_matrix)*10E-10)
+    random_matrix <- replicate(ncol_matrix, runif(nrow_matrix) * 10E-10)
     sampleMatrix <- sampleMatrix + random_matrix
 
     shapiro20 <- sapply(sampleMatrix, shapiro.test)   #apply Shapiro Wilk test on each column (=metabolite)
     shapirop20 <- shapiro20[2,]                                     #Retrieve p-values
-    shapirop20 <- p.adjust(shapirop20,method="holm",n=length(shapirop20))
-    numbernormal20 <-sum(shapirop20 > 0.05)       #chosen alpha value = 0.05
+    shapirop20 <- p.adjust(shapirop20, method = "holm", n = length(shapirop20))
+    numbernormal20 <- sum(shapirop20 > 0.05)       #chosen alpha value = 0.05
 
     numbernormal20  #Count number of columns which are normally distributed
 }
@@ -370,6 +356,140 @@ meaningful cut-off.
 met_data$Age_10 <- met_data$Age / 10
 
 ```
+
+
+# Aditional filtering of participants to match tprot, tmetab lms
+
+```{r load-liver-param}
+#' from same excel loaded above, already added to met_data
+#colnames(met_data)
+met_data$T2D <- factor(met_data$T2D)
+summary(met_data[, c("liver_fat", "T2D")])
+
+```
+
+Add a categoric liver_stiffness category too, using both the definition of 
+Christoph (7, 15 cutoffs) and in literature (7, 12.5 kPa cutoffs).
+
+```{r liver-stiffness-category}
+#' naab11 according to Christoph
+met_data$liver_stiffness_cat1 <- 2
+met_data$liver_stiffness_cat1[which(met_data$liver_stiffness < 7)] <- 1
+met_data$liver_stiffness_cat1[which(met_data$liver_stiffness > 15)] <- 3
+
+#' naab11 according to literature
+met_data$liver_stiffness_cat2 <- 2
+met_data$liver_stiffness_cat2[which(met_data$liver_stiffness < 7)] <- 1     #mild or absent fibrosis
+met_data$liver_stiffness_cat2[which(met_data$liver_stiffness > 12.5)] <- 3  #cirrhosis
+
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+
+```
+
+FIB4 is numeric, continuous ranging between 0.3 - 7.9. A higher score is more 
+liver fibrosis. After initial run, the 1 participant with the upper value of 
+FIB4 = 7.9 was removed, as the median = 1.2 with the second highest 
+participant with a FIB4 = 3.0.
+
+```{r subset-fib4-outlier}
+#' remove 1 participant with max fib4 value
+
+median(na.omit(met_data$FIB4))
+mean(na.omit(met_data$FIB4))
+sd(na.omit(met_data$FIB4))
+summary(met_data$FIB4)
+
+dim(met_data)
+met_data <- met_data[met_data$FIB4 < 7.8876, ]
+dim(met_data)
+
+```
+
+Add the information from the [nafld_data_overview.Rmd](nafld_data_overview.Rmd) 
+report regarding the steatosis, using the parameter naab11: liver stiffness 
+(higher values are worse). Values for participants that have a naab12 
+(liver stiffness IQR) > 30 should be either removed or taken with care. 
+Further called "liver_stiffness".
+
+```{r load-liver-param2}
+#' from same excel loaded above, already added to met_data
+#colnames(met_data)
+
+#' remove samples with  naab12 (liver stiffness IQR) > 30
+dim(met_data)
+met_data <- met_data[met_data$liver_stiffnes_iqr <= 30.0 & !is.na(met_data$liver_stiffnes_iqr), ] #no one above 30, have some NAs though that also need to be removed to be sure ok
+dim(met_data)
+
+met_data$T2D <- factor(met_data$T2D)
+summary(met_data[, c("liver_stiffness", 'liver_stiffness_cat2', "T2D")])
+dim(met_data)
+
+```
+
+liver_stiffness is numeric, continuous ranging between 1.5 - 34.4. A higher 
+score is more liver stiffness, aka more steatosis. 
+After initial run, the 1 participant with the upper value of 
+liver_stiffness = 34.4 was removed, as the median = 4.8 with the second highest 
+participant with a liver_stiffness = 18.4.
+
+```{r subset-liver_stiffness-outlier}
+#' remove 1 participant with max liver_stiffness value
+
+median(na.omit(met_data$liver_stiffness ))
+mean(na.omit(met_data$liver_stiffness))
+sd(na.omit(met_data$liver_stiffness))
+summary(met_data$liver_stiffness)
+
+dim(met_data)
+met_data <- met_data[met_data$liver_stiffness < 34.4, ]
+dim(met_data)
+
+```
+
+Add a categoric liver_fat category, using the following cutoffs:
+
+- "normal": A score below 238 dB/m means the amount of fatty change in your 
+  liver is not higher than normal.
+- grade steatosis S1: 238 to 260 dB/m
+- grade steatosis S2: 260 to 290 dB/m
+- grade steatosis S3: 290 to 400 dB/m
+
+depending on the distribution, look only at the extreme normal - steatosis.
+
+```{r liver-fat-category}
+#' naab13 make 4 groups
+met_data$liver_fat_cat1 <- NA
+met_data$liver_fat_cat1[which(met_data$liver_fat < 238)] <- 1 #normal
+met_data$liver_fat_cat1[which(met_data$liver_fat > 238)] <- 2
+met_data$liver_fat_cat1[which(met_data$liver_fat > 260)] <- 3
+met_data$liver_fat_cat1[which(met_data$liver_fat > 290)] <- 4
+
+#' naab13 make 2 groups
+met_data$liver_fat_cat2 <- NA
+met_data$liver_fat_cat2[which(met_data$liver_fat < 238)] <- 1 #normal
+met_data$liver_fat_cat2[which(met_data$liver_fat > 290)] <- 2  #steatosis, high S3
+
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+
+summary(met_data[, "liver_fat"])
+table(met_data[, "liver_fat_cat1"])
+table(met_data[, "liver_fat_cat2"])
+dim(met_data)
+
+```
+
+We add a visc_subcut_fat variable on the dataset, comprising the ratio of 
+visceral to subcutaneous fat thickness.
+
+```{r}
+met_data$visc_subcut_fat <- met_data$visc_fat / met_data$body_fat
+summary(met_data$visc_subcut_fat)
+sd(met_data$visc_subcut_fat, na.rm = TRUE)
+
+```
+
 
 # Evaluation of the various variables in the data set
 
@@ -564,13 +684,49 @@ together with the MASLD sld_type phenotype, but the gender and BMI do
 (therefore, it is nessecary to include these into lm as covariates).
 
 
+# Logistic model to evaluate SLD types - original
 
-# Linear model to evaluate SLD types - original
+Done for metabolites. FYI: here using lm function, but with factors for target,
+so logistic regression was performed.
+
+```{r}
+met_data$liver_fat_cat1 <- as.factor(met_data$liver_fat_cat1)
+summary(met_data$liver_fat_cat1)
+
+met_data <- met_data[!is.na(met_data$liver_fat_cat2), ]
+met_data$liver_fat_cat2 <- as.factor(met_data$liver_fat_cat2)
+summary(met_data$liver_fat_cat2)
+
+```
+
+logistic models setup:
+
+```{r define-lm-covariates-and-target}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10")
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat2'
+print("liver_fat_cat2")
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+#' variables are the output y in lm(y ~ .):
+#print(metabolites)
+
+print('nr of variables inspected:')
+print(length(metabolites))
+
+print('nr of individuals inspected:')
+print(dim(met_data))
+
+```
 
 To identify metabolites related with the 2 (none, MASLD) of the 4 SLD types
 (none, MASLD, MetALD, SLD), seperate linear regression models are fitted for all
 metabolites separately (as a response) with sex, age and the (categorical)
-sld_type as a covariates.
+liver_fat_cat2 as a covariates.
 
 Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
@@ -583,7 +739,7 @@ multiple hypothesis testing with the method from Benjamini & Hochberg.
 #'   and p-values
 funForLinReg <- function(analyte, data) {
     y <- data[, analyte]
-    data <- data[, c("Sex", "Age_10", "sld_type")]
+    data <- data[, c("Sex", "Age_10", "liver_fat_cat2")]
     res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
     pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
     rownames(pvals) <- analyte
@@ -593,7 +749,7 @@ funForLinReg <- function(analyte, data) {
 }
 
 #' tests
-#met_data[1:5, c("Sex", "Age", "sld_type")]
+#met_data[1:5, c("Sex", "Age", "liver_fat_cat2")]
 #met_data[1:5, metabolites[1]]
 #data <- met_data
 #analyte <- metabolites[1]
@@ -756,9 +912,9 @@ clust2 <- hclust(dist(t(es_results)), method = "ward.D")
 es_results[es_results == 0] <- NA
 es_results <- round(es_results, 2)
 
-#' info regarding sld_type
-#print('nr of metabolites with a not-zero effect size in the sld_type group:')
-#sum(es_results[, 'effectSize_sld_typeMASLD'] != 0)
+#' info regarding liver_fat_cat2
+#print('nr of metabolites with a not-zero effect size in the liver_fat_cat2 group:')
+#sum(es_results[, 'effectSize_liver_fat_cat22'] != 0)
 
 #' in long format
 es_results_long <- melt(as.matrix(es_results))
@@ -795,9 +951,9 @@ heat map. also, the dendograms after hierarchical clustering are shown.
 es_results_sig <- es_results
 es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
 
-#' info regarding sld_type (check=ok)
-print('nr of significant metabolites in the sld_type group:')
-sum(es_results_sig[, 'effectSize_sld_typeMASLD'] != "")
+#' info regarding liver_fat_cat2 (check=ok)
+print('nr of significant metabolites in the liver_fat_cat2 group:')
+sum(es_results_sig[, 'effectSize_liver_fat_cat22'] != "")
 
 #' plot
 colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
@@ -814,7 +970,7 @@ concentrations between participants of SLD types *MASLD* and *none*. We show the
 results for that coefficient using a volcano plot, coloring significant
 associations in red.
 
-```{r volcano, FIG-volcano-sld_type, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
+```{r volcano, FIG-volcano-liver_fat_cat2, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
 plot_volcano <- function(x, comparison = character(), ...) {
     X <- x[, paste0("coef_", comparison)]
     Y <- x[, paste0("p.adj_", comparison)]
@@ -834,10 +990,10 @@ significant_points <- function(x, comparison = character(),
     if (any(s))
         points(X[s], -log10(Y[s]), col = col, bg = bg, pch = 21)
 }
-plot_volcano(results, "sld_typeMASLD", main = "MASLD vs none")
+plot_volcano(results, "liver_fat_cat22", main = "MASLD vs none")
 grid()
 abline(h = -log10(0.05), lty = 1, col = "grey")
-significant_points(results, comparison = "sld_typeMASLD")
+significant_points(results, comparison = "liver_fat_cat22")
 
 ```
 
@@ -854,7 +1010,7 @@ significant_table <- function(x, comparison = character(),
     colnames(tmp) <- sub(paste0("_", comparison), "", colnames(tmp))
     tmp
 }
-sig_tab <- significant_table(results, comparison = "sld_typeMASLD")
+sig_tab <- significant_table(results, comparison = "liver_fat_cat22")
 
 pandoc.table(
     sig_tab, style = "rmarkdown", split.table = Inf,
@@ -867,7 +1023,7 @@ The full results table is shown below.
 
 ```{r table-top-20, results = "asis"}
 ##
-oorder <- results[order(results[, "p.adj_sld_typeMASLD"]), ]
+oorder <- results[order(results[, "p.adj_liver_fat_cat22"]), ]
 
 pandoc.table(oorder[1:5, c(1, 2, 4, 7, 10, 13, 17)], style = "rmarkdown",
              split.table = Inf, caption = "Top 5 metabolites for type MASLD")
@@ -898,39 +1054,39 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = FT00940),
                 analyte = "FT00940")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r BP_lysoPC, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00181`),
                 analyte = "FT00181")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00689`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00689`),
                 analyte = "FT00689")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Leu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00949`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00949`),
                 analyte = "FT00949")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r H1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00528`),
                 analyte = "FT00528")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r save results for sensitivity analysis}
 #' get coef values from both lm models
-lm_original <- results$coef_sld_typeMASLD
+lm_original <- results$coef_liver_fat_cat22
 ```
 
 In addition, we also export the results table from the lm containing the m/z,
@@ -948,12 +1104,49 @@ write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE
 ```
 
 
-# Linear model to evaluate SLD types - with BMI
+# Logistic model to evaluate SLD types - with BMI
+
+Done for metabolites. FYI: here using lm function, but with factors for target,
+so logistic regression was performed.
+
+```{r}
+met_data$liver_fat_cat1 <- as.factor(met_data$liver_fat_cat1)
+summary(met_data$liver_fat_cat1)
+
+met_data <- met_data[!is.na(met_data$liver_fat_cat2), ]
+met_data$liver_fat_cat2 <- as.factor(met_data$liver_fat_cat2)
+summary(met_data$liver_fat_cat2)
+
+```
+
+logistic models setup:
+
+```{r define-lm-covariates-and-target-bmi}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10", 'BMI')
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat2'
+print("liver_fat_cat2")
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+#' variables are the output y in lm(y ~ .):
+#print(metabolites)
+
+print('nr of variables inspected:')
+print(length(metabolites))
+
+print('nr of individuals inspected:')
+print(dim(met_data))
+
+```
 
 To identify metabolites related with the 2 (none, MASLD) of the 4 SLD types
 (none, MASLD, MetALD, SLD), seperate linear regression models are fitted for all
 metabolites separately (as a response) with BMI, sex, age and the (categorical)
-sld_type as a covariates.
+liver_fat_cat2 as a covariates.
 
 Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
@@ -966,7 +1159,7 @@ multiple hypothesis testing with the method from Benjamini & Hochberg.
 #'   and p-values
 funForLinReg <- function(analyte, data) {
     y <- data[, analyte]
-    data <- data[, c("BMI", "Sex", "Age_10", "sld_type")]
+    data <- data[, c("BMI", "Sex", "Age_10", "liver_fat_cat2")]
     res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
     pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
     rownames(pvals) <- analyte
@@ -976,7 +1169,7 @@ funForLinReg <- function(analyte, data) {
 }
 
 #' tests
-#met_data[1:5, c("Sex", "Age", "sld_type")]
+#met_data[1:5, c("Sex", "Age", "liver_fat_cat2")]
 #met_data[1:5, metabolites[1]]
 #data <- met_data
 #analyte <- metabolites[1]
@@ -1139,9 +1332,9 @@ clust2 <- hclust(dist(t(es_results)), method = "ward.D")
 es_results[es_results == 0] <- NA
 es_results <- round(es_results, 2)
 
-#' info regarding sld_type
-#print('nr of metabolites with a not-zero effect size in the sld_type group:')
-#sum(es_results[, 'effectSize_sld_typeMASLD'] != 0)
+#' info regarding liver_fat_cat2
+#print('nr of metabolites with a not-zero effect size in the liver_fat_cat2 group:')
+#sum(es_results[, 'effectSize_liver_fat_cat22'] != 0)
 
 #' in long format
 es_results_long <- melt(as.matrix(es_results))
@@ -1178,9 +1371,9 @@ heat map. also, the dendograms after hierarchical clustering are shown.
 es_results_sig <- es_results
 es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
 
-#' info regarding sld_type (check=ok)
-print('nr of significant metabolites in the sld_type group:')
-sum(es_results_sig[, 'effectSize_sld_typeMASLD'] != "")
+#' info regarding liver_fat_cat2 (check=ok)
+print('nr of significant metabolites in the liver_fat_cat2 group:')
+sum(es_results_sig[, 'effectSize_liver_fat_cat22'] != "")
 
 #' plot
 colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
@@ -1197,7 +1390,7 @@ concentrations between participants of SLD types *MASLD* and *none*. We show the
 results for that coefficient using a volcano plot, coloring significant
 associations in red.
 
-```{r volcano w BMI, FIG-volcano-sld_type, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
+```{r volcano w BMI, FIG-volcano-liver_fat_cat2, fig.path = IMAGE_PATH, fig.width = 8, fig.height = 8, fig.cap = "Volcano plot for the liver stiffness. Red colored points are those with an adjusted p-value smaller than 0.05."}
 plot_volcano <- function(x, comparison = character(), ...) {
     X <- x[, paste0("coef_", comparison)]
     Y <- x[, paste0("p.adj_", comparison)]
@@ -1217,10 +1410,10 @@ significant_points <- function(x, comparison = character(),
     if (any(s))
         points(X[s], -log10(Y[s]), col = col, bg = bg, pch = 21)
 }
-plot_volcano(results, "sld_typeMASLD", main = "MASLD vs none")
+plot_volcano(results, "liver_fat_cat22", main = "MASLD vs none")
 grid()
 abline(h = -log10(0.05), lty = 1, col = "grey")
-significant_points(results, comparison = "sld_typeMASLD")
+significant_points(results, comparison = "liver_fat_cat22")
 
 ```
 
@@ -1237,7 +1430,7 @@ significant_table <- function(x, comparison = character(),
     colnames(tmp) <- sub(paste0("_", comparison), "", colnames(tmp))
     tmp
 }
-sig_tab <- significant_table(results, comparison = "sld_typeMASLD")
+sig_tab <- significant_table(results, comparison = "liver_fat_cat22")
 
 pandoc.table(
     sig_tab, style = "rmarkdown", split.table = Inf,
@@ -1250,7 +1443,7 @@ The full results table is shown below.
 
 ```{r table-top-20 w BMI, results = "asis"}
 ##
-oorder <- results[order(results[, "p.adj_sld_typeMASLD"]), ]
+oorder <- results[order(results[, "p.adj_liver_fat_cat22"]), ]
 
 pandoc.table(oorder[1:5, c(1, 4, 7, 10, 13, 17)], style = "rmarkdown",
              split.table = Inf, caption = "Top 5 metabolites for type MASLD")
@@ -1281,39 +1474,39 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = sld_type, y = FT00940),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = FT00940),
                 analyte = "FT00940")
 ggplotly_or_not(s_1, PLOTLY)
 
 ```
 
 ```{r Leu w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00181`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00181`),
                 analyte = "FT00181")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ala w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT00528`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00528`),
                 analyte = "FT00528")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Ile w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT05130`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT05130`),
                 analyte = "FT05130")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r Tyr w BMI, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = sld_type, y = `FT04260`),
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT04260`),
                 analyte = "FT04260")
 ggplotly_or_not(s_1, PLOTLY)
 ```
 
 ```{r save results for sensitivity analysis w BMI}
 #' get coef values from both lm models
-lm_withbmi <- results$coef_sld_typeMASLD
+lm_withbmi <- results$coef_liver_fat_cat22
 ```
 
 In addition, we also export the results table from the lm containing the m/z,
