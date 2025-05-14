@@ -527,7 +527,7 @@ participant with a liver_stiffness = 18.4.
 ```{r subset-liver_stiffness-outlier}
 #' remove 1 participant with max liver_stiffness value
 
-median(na.omit(gal_met_prot_data$liver_stiffness ))
+median(na.omit(gal_met_prot_data$liver_stiffness))
 mean(na.omit(gal_met_prot_data$liver_stiffness))
 sd(na.omit(gal_met_prot_data$liver_stiffness))
 summary(gal_met_prot_data$liver_stiffness)
@@ -2736,75 +2736,11 @@ plt
 
 ## proteins and metab, other together together
 
-plan: 
+plan:
 
-- [] pathway enrichment of proteins using 
-"Pathway Enrichment Analysis with clusterProfiler" from
-https://biostatsquid.com/pathway-enrichment-analysis-tutorial-clusterprofiler/
-and output is a bar/dot or lollipop plot.
-- [] pathway enrichment of metabolites using Mummichog, see own code
-and output is a bar/dot or lollipop plot.
-- [] MAYBE? have previously done mummuchog on the untargeted metab!! output were 
-validation of same AAs. but all this work (pp, normal, lm...) already done,
-so miht as well include this.
-- [] network with both indiv names (met and prot) or center function and 2 col
-with idiv met/prot linked. tbd
-
->
-
-Pathway enrichment for the proteomics dataset using clusterProfiler.
-
-```{r}
-install.packages('tidyverse')
-library(tidyverse)
-library(clusterProfiler) # for PEA analysis NOOOOOOO!!!
-
-## Function: Adjacency matrix to list ####
-matrix_to_list <- function(pws){
-  pws.l <- list()
-  for (pw in colnames(pws)) {
-    pws.l[[pw]] <- rownames(pws)[as.logical(pws[, pw])]
-  }
-  return(pws.l)
-}
-
-
-df <- lm_output_prot
-colnames(df)
-
-# Annotate according to differential expression, TODO w/o tidyverse/dyplr...
-df <- df %>% mutate(diffexpressed = case_when(
-  effectSize_liver_fat_cat22 > 0 & p.adj_liver_fat_cat22 < 0.05 ~ 'UP',
-  effectSize_liver_fat_cat22 < 0 & p.adj_liver_fat_cat22 < 0.05 ~ 'DOWN',
-  p.adj_liver_fat_cat22 > 0.05 ~ 'NO'
-))
-df$gene_symbol <- df$Genes
-
-# Read in the .gmt file, from curated C2 (7411#). need account... TBC
-#https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp
-file <- "PEA/Background_genes/c2.cp.kegg.v7.5.1.symbols.gmt"
-pwl2 <- read.gmt(file) 
-# Subset to the genes that are present in our dataset
-pwl2 <- pwl2[pwl2$gene %in% genes_in_data,] 
-# Save the filtered background gene set
-filename <- 'kegg.RDS'
-saveRDS(pwl2, filename)
-
-
-
-# Remove non-significant genes
-df <- df[df$diffexpressed != 'NO', ]
-# Substitute names so they are annotated nicely in the heatmap later
-df$diffexpressed <- gsub('DOWN', 'Healthy', gsub('UP', 'Severe', df$diffexpressed))
-unique(df$diffexpressed)
-# Split the dataframe into a list of sub-dataframes: upregulated, downregulated genes
-deg_results_list <- split(df, df$diffexpressed)
-
-
-
-
-```
-
+- [] floorplan of coagulation and AA metabolism
+- [] add barplots of measured metab/prot with background (prot/metab) and 
+control, grade S3 steatosis 2 bars, with '*' if significant (lm's).
 
 
 
