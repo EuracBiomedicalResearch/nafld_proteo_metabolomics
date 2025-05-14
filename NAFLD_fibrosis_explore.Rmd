@@ -396,6 +396,9 @@ met_prot_data$liver_stiffness_cat2 <- 2
 met_prot_data$liver_stiffness_cat2[which(met_prot_data$liver_stiffness < 7)] <- 1     #mild or absent fibrosis
 met_prot_data$liver_stiffness_cat2[which(met_prot_data$liver_stiffness > 12.5)] <- 3  #cirrhosis
 
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+#' 
 ```
 
 FIB4 is numeric, continuous ranging between 0.3 - 7.9. A higher score is more 
@@ -405,6 +408,12 @@ participant with a FIB4 = 3.0.
 
 ```{r subset-fib4-outlier}
 #' remove 1 participant with max fib4 value
+
+median(na.omit(met_prot_data$FIB4))
+mean(na.omit(met_prot_data$FIB4))
+sd(na.omit(met_prot_data$FIB4))
+summary(met_prot_data$FIB4)
+
 dim(met_prot_data)
 met_prot_data <- met_prot_data[met_prot_data$FIB4 < 7.8876, ]
 dim(met_prot_data)
@@ -423,11 +432,13 @@ Further called "liver_stiffness".
 
 #' remove samples with  naab12 (liver stiffness IQR) > 30
 dim(met_prot_data)
-met_prot_data <- met_prot_data[met_prot_data$liver_stiffnes_iqr <= 30.0, ] #no one above, have some NAs though
+met_prot_data <- met_prot_data[met_prot_data$liver_stiffnes_iqr <= 30.0 & !is.na
+(met_prot_data$liver_stiffnes_iqr), ] #no one above 30, have some NAs though that also need to be removed to be sure ok
 dim(met_prot_data)
 
 met_prot_data$T2D <- factor(met_prot_data$T2D)
 summary(met_prot_data[, c("liver_stiffness", 'liver_stiffness_cat2', "T2D")])
+dim(met_prot_data)
 
 ```
 
@@ -439,9 +450,64 @@ participant with a liver_stiffness = 18.4.
 
 ```{r subset-liver_stiffness-outlier}
 #' remove 1 participant with max liver_stiffness value
+
+median(na.omit(met_prot_data$liver_stiffness))
+mean(na.omit(met_prot_data$liver_stiffness))
+sd(na.omit(met_prot_data$liver_stiffness))
+summary(met_prot_data$liver_stiffness)
+
 dim(met_prot_data)
 met_prot_data <- met_prot_data[met_prot_data$liver_stiffness < 34.4, ]
 dim(met_prot_data)
+
+```
+
+Add a categoric liver_fat category, using the following cutoffs:
+
+- "normal": A score below 238 dB/m means the amount of fatty change in your 
+  liver is not higher than normal.
+- grade steatosis S1: 238 to 260 dB/m
+- grade steatosis S2: 260 to 290 dB/m
+- grade steatosis S3: 290 to 400 dB/m
+
+depending on the distribution, look only at the extreme normal - steatosis.
+
+```{r liver-fat-category}
+#' naab13 make 4 groups
+met_prot_data$liver_fat_cat1 <- NA
+met_prot_data$liver_fat_cat1[which(met_prot_data$liver_fat < 238)] <- 1 #normal
+met_prot_data$liver_fat_cat1[which(met_prot_data$liver_fat > 238)] <- 2
+met_prot_data$liver_fat_cat1[which(met_prot_data$liver_fat > 260)] <- 3
+met_prot_data$liver_fat_cat1[which(met_prot_data$liver_fat > 290)] <- 4
+
+#' naab13 make 2 groups
+met_prot_data$liver_fat_cat2 <- NA
+met_prot_data$liver_fat_cat2[which(met_prot_data$liver_fat < 238)] <- 1 #normal
+met_prot_data$liver_fat_cat2[which(met_prot_data$liver_fat > 290)] <- 2  #steatosis, high S3
+
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+
+summary(met_prot_data[, "liver_fat"])
+table(met_prot_data[, "liver_fat_cat1"])
+table(met_prot_data[, "liver_fat_cat2"])
+dim(met_prot_data)
+
+```
+
+Also show the final nr of partiicpants for the liver stiffness, fibrosis:
+
+```{r}
+table(met_prot_data$liver_stiffness_cat2)
+```
+
+We add a visc_subcut_fat variable on the dataset, comprising the ratio of 
+visceral to subcutaneous fat thickness.
+
+```{r}
+met_prot_data$visc_subcut_fat <- met_prot_data$visc_fat / met_prot_data$body_fat
+summary(met_prot_data$visc_subcut_fat)
+sd(met_prot_data$visc_subcut_fat, na.rm = TRUE)
 
 ```
 
@@ -512,6 +578,20 @@ scatter_plot <- function(data, aes, analyte) {
 s_1 <- scatter_plot(met_prot_data, aes(x = liver_stiffness, y = FIB4),
                 analyte = 'FIB4')
 ggplotly_or_not(s_1, PLOTLY)
+
+```
+
+Basic plot with with linear regression line and R2 added:
+
+```{r}
+#plot
+plot(met_prot_data$liver_stiffness, met_prot_data$FIB4)
+#Adds the line
+abline(fit <- lm(met_prot_data$FIB4 ~ met_prot_data$liver_stiffness), col = "gray")
+#Shows stats on command line
+summary(fit)
+#legend on plot
+legend("topright", bty="n", legend=paste("R2 = ", format(summary(fit)$adj.r.squared, digits = 4)))
 
 ```
 
@@ -631,9 +711,9 @@ correlation_scaledmatrix[is.na(correlation_scaledmatrix)] <- 0
 ord <- hclust(dist(correlation_scaledmatrix))$order #info about order in object ord$order
 #default clustering: Cluster method: complete; Distance: euclidean see doc: https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/hclust
 #ord
-dendrogram <-as.dendrogram(hclust(dist(correlation_scaledmatrix)))
-png("dendogram_clust.png", width=10, height=5, units="in", res=300)
-par(cex=.2)
+dendrogram <- as.dendrogram(hclust(dist(correlation_scaledmatrix)))
+png("dendogram_clust.png", width = 10, height = 5, units = "in", res = 300)
+par(cex = 0.2)
 plot(dendrogram)
 dev.off()
 
@@ -707,7 +787,7 @@ See trendlines/boxplots for 2 examples (Vitronectin and apo D) at end html
 report.
 
 
-# Logistic regression with naab11-liver_stiffness_cat2
+# Logistic regression with naab11-liver_stiffness_cat2 - proteins
 
 Done for proteomics. FYI: here glm func, but actually same as lm is using 
 factors.
@@ -1145,7 +1225,7 @@ protein. Not significant anymore (padj value) when both poteins and metabolites
 are evaluated together.
 
 
-# Logistic model with naab11-liver_stiffness_cat2
+# Logistic regression with naab11-liver_stiffness_cat2 - metabolites
 
 Done for metabolites. FYI: here using lm function, but with factors for target,
 so logisitc regression was performed.
