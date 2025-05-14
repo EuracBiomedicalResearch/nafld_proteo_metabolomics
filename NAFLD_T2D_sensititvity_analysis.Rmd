@@ -1,0 +1,454 @@
+---
+title: "NAFLD_T2D_sensititvity_analysis"
+author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
+affiliation: "Eurac Research, Bolzano, Italy"
+date: "2025-02-10"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+**Modified**: `r file.info("NAFLD_T2D_sensititvity_analysis.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("    Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
+  }
+}))
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+
+```
+
+
+# Introduction
+
+During this workflow, sensitivity analyses are performed to investigate
+influence and potential confounding of T2D on the steatosis results:
+coefficients for steatosis were compared between the standard linear model and
+a model accounting for T2D. 
+
+For this, the original results are loaded of the saved lm results file for
+fibrosis and steatosis The lms with T2D as added covariate are calculated there. 
+For this, Rdata is loaded here. Loaded (wo T2D in covariates) and calculated
+models (with T2D in covariates) are afterwards compared here.
+
+In addition, steatosis associations were performed
+separately on participants with (n = 103) or without T2D (n = 219). FINDME!!
+
+# Setup
+
+## Directories
+
+```{r directories, echo = FALSE}
+#' General settings
+filename <- " NAFLD_T2D_sensititvity_analysis"
+
+#' Path to the data
+#No, manualy done below
+
+```
+
+## Packages
+
+```{r packages, message=FALSE}
+#' Load libraries
+library(ggplot2)
+library(pander)
+library(plotly)
+
+```
+
+
+# 1 Fibrosis - tprot
+
+## load lm results (wo T2D in covariates)
+
+```{r}
+#' get coef values from lm model
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_fibrosis_explore/lm_output_results_prot.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_none <- results$coef_liver_stiffness_cat23
+
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_fibrosis_explore/lm_output_results_prot_t2d.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_T2D <- results$coef_liver_stiffness_cat23
+
+rownames(results) <- results$Genes
+
+```
+
+## Sensitivity analysis
+
+The coeficients (MASLD vs none) from the linear model to evaluate SLD
+types - original is compared to the linear model to evaluate SLD types - with
+BMI, using a sensitivity analysis.
+
+```{r}
+#' merge coef values from both lm models above
+sensit <- data.frame(featureid = rownames(results),
+                  x = lm_T2D,
+                  y = lm_none)
+#head(sensit)
+
+#' prep for plotting
+PLOTLY <- TRUE
+ggplotly_or_not <- function(x, interactive = TRUE) {
+    if (interactive) ggplotly(x)
+    else print(x)
+}
+
+#' scatterplot with coeff vales
+scatter_plot <- function(data) {
+    ggplot(data, aes(x = x, y = y)) +
+        geom_point(aes(x,y), colour = "gray65") +
+        stat_smooth(method = lm, se = TRUE) + #with standard error
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) +
+        labs(title = 'Fibrosis tprot coefficients between datasets:',
+             x = 'lm model - MASLD',
+             y = 'lm model - none') +
+        theme_bw ()
+}
+
+s_1 <- scatter_plot(sensit)
+ggplotly_or_not(s_1, PLOTLY)
+
+```
+
+```{r, eval = FALSE}
+#' FC for see diff between 2 datasets
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
+
+#' table with highest dev coef
+pandoc.table(
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
+                     ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without T2D as covariates")
+
+```
+
+
+# 2 Fibrosis - tmetab
+
+## load lm results
+
+```{r}
+#' get coef values from both lm models
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_fibrosis_explore/lm_output_results_metab.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_none <- results$coef_liver_stiffness_cat23
+
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_fibrosis_explore/lm_output_results_metab_t2d.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_T2D <- results$coef_liver_stiffness_cat23
+
+rownames(results) <- results$analyte_name
+
+```
+
+
+## Sensitivity analysis
+
+The coeficients (MASLD vs none) from the linear model to evaluate SLD
+types - original is compared to the linear model to evaluate SLD types - with
+BMI, using a sensitivity analysis.
+
+```{r}
+#' merge coef values from both lm models above
+sensit <- data.frame(featureid = rownames(results),
+                  x = lm_T2D,
+                  y = lm_none)
+#head(sensit)
+
+#' scatterplot with coeff vales
+scatter_plot <- function(data) {
+    ggplot(data, aes(x = x, y = y)) +
+        geom_point(aes(x,y), colour = "gray65") +
+        stat_smooth(method = lm, se = TRUE) + #with standard error
+        #geom_text(x = -Inf, y = Inf, label = equation, parse = TRUE, vjust = 1.5, hjust = -0.1) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) +
+        labs(title = 'Fibrosis tmetab coefficients between datasets:',
+             x = 'lm model - MASLD',
+             y = 'lm model - none') +
+        theme_bw ()
+}
+
+s_1 <- scatter_plot(sensit)
+ggplotly_or_not(s_1, PLOTLY)
+
+```
+
+```{r, eval = FALSE}
+#' FC for see diff between 2 datasets
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
+
+#' table with highest dev coef
+pandoc.table(
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
+                     ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without T2D as covariates")
+
+```
+
+
+# 3 Steatosis - tprot
+
+## load lm results
+
+```{r}
+#' get coef values from both lm models
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_steatosis_explore/lm_output_results_proteins.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_T2D <- results$coef_liver_fat_cat22
+
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_steatosis_explore/lm_output_results_proteins_t2d.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_none <- results$coef_liver_fat_cat22
+
+rownames(results) <- results$Genes
+
+```
+
+
+## Sensitivity analysis
+
+The coeficients (MASLD vs none) from the linear model to evaluate SLD
+types - original is compared to the linear model to evaluate SLD types - with
+BMI, using a sensitivity analysis.
+
+```{r}
+#' merge coef values from both lm models above
+sensit <- data.frame(featureid = rownames(results),
+                  x = lm_T2D,
+                  y = lm_none)
+#head(sensit)
+
+#' scatterplot with coeff vales
+scatter_plot <- function(data) {
+    ggplot(data, aes(x = x, y = y)) +
+        geom_point(aes(x,y), colour = "gray65") +
+        stat_smooth(method = lm, se = TRUE) + #with standard error 
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) +
+        labs(title = 'Steatosis tprot coefficients between datasets:',
+             x = 'lm model - MASLD',
+             y = 'lm model - none') +
+        theme_bw ()
+}
+
+s_1 <- scatter_plot(sensit)
+ggplotly_or_not(s_1, PLOTLY)
+
+```
+
+```{r, eval = FALSE}
+#' FC for see diff between 2 datasets
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
+
+#' table with highest dev coef
+pandoc.table(
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
+                     ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without T2D as covariates")
+
+```
+
+
+# 4 Steatosis - tmetab
+
+## load lm results
+
+```{r}
+#' get coef values from both lm models
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_steatosis_explore/lm_output_results_metabolites.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_T2D <- results$coef_liver_fat_cat22
+
+handle <- "/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_steatosis_explore/lm_output_results_metabolites_t2d.txt"
+results <- read.csv(handle, header = TRUE, sep = "\t")
+dim(results)
+lm_none <- results$coef_liver_fat_cat22
+
+rownames(results) <- results$analyte_name
+
+```
+
+
+## Sensitivity analysis
+
+The coeficients (MASLD vs none) from the linear model to evaluate SLD
+types - original is compared to the linear model to evaluate SLD types - with
+BMI, using a sensitivity analysis.
+
+```{r}
+#' merge coef values from both lm models above
+sensit <- data.frame(featureid = rownames(results),
+                  x = lm_T2D,
+                  y = lm_none)
+#head(sensit)
+
+#' scatterplot with coeff vales
+scatter_plot <- function(data) {
+    ggplot(data, aes(x = x, y = y)) +
+        geom_point(aes(x,y), colour = "gray65") +
+        stat_smooth(method = lm, se = TRUE) + #with standard error
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) +
+        labs(title = 'Steatosis tmetab coefficients between datasets:',
+             x = 'lm model - MASLD',
+             y = 'lm model - none') +
+        theme_bw ()
+}
+
+s_1 <- scatter_plot(sensit)
+ggplotly_or_not(s_1, PLOTLY)
+
+```
+
+```{r, eval = FALSE}
+#' FC for see diff between 2 datasets
+sensit$FC <- abs(sensit$x + 0.00000001) / abs(sensit$y + 0.00000001)
+sensit$log2FC <- log2(abs(sensit$FC))
+# 0.5 and > 2 intersting, NO too many
+#summary(sensit)
+#dim(sensit)
+hist(sensit$log2FC)
+#sensit <- sensit[sensit$log2FC < 0.5 | sensit$log2FC > 2.0, ]  #94 of 148 left, maybe more diff?
+#sensit <- sensit[sensit$FC > 25, ] #5 left
+sensit <- sensit[sensit$log2FC < -5 | sensit$log2FC > +5, ]  #10 left
+
+#' table with highest dev coef
+pandoc.table(
+    sensit, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Coeficients of lm models using proteins ",
+                     "between MASLD and control (none) participants",
+                     ", only log2FC < -5 and log2FC > +5"))
+
+```
+
+
+## Table with differences
+
+```{r, results = "asis"}
+#add difference column
+sensit$diff <- abs(sensit$x - sensit$y)
+sensit <- sensit[order(sensit$diff, decreasing = TRUE), ]
+
+pandoc.table(sensit[1:20, ], style = "rmarkdown",
+             split.table = Inf, caption = "Top 20 different variable coeficients between lm model with- and without T2D as covariates")
+
+```
+
+
+
+# Acknowledgments
+
+- NAFLD_metab_targeted_lm
+- NAFLD_fibrosis_prot_lm, etc.
+
+
+# Session information
+
+R packages used for the analysis:
+
+```{r}
+sessionInfo()
+```
+
+
