@@ -1,5 +1,5 @@
 ---
-title: "NAFLD_steatosis_prot_explore"
+title: "NAFLD_steatosis_explore"
 author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
 affiliation: "Eurac Research, Bolzano, Italy"
 date: "2025-02-27"
@@ -101,7 +101,7 @@ participants.
 
 ```{r directories, echo = FALSE}
 #' General settings
-filename <- " NAFLD_steatosis_explore"
+filename <- "NAFLD_steatosis_explore"
 
 #' Path to save images to; remove if exists.
 IMAGE_PATH <- paste0("images/", filename, "/")
@@ -2734,7 +2734,7 @@ plt
 ```
 
 
-## proteins and metab, other together together
+## Pathway analysis: proteins and metab, other
 
 plan:
 
@@ -2744,7 +2744,395 @@ control, grade S3 steatosis 2 bars, with '*' if significant (lm's).
 
 
 
+# Sensitivity analysis to investigate T2D
 
+See document: NAFLD_T2D_sensititvity_analysis.Rmd, the original lms will be
+loaded from above. The lms with T2D as added covariate are calculated in this
+paragraph and also saved as Rdata for further sensititvity_analysis.
+
+
+## Logistic model with naab13_cat2 with T2D - proteins
+
+Logistic models (classification) setup:
+
+```{r define-glm-covariates-and-target-t2d}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10", "T2D")
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat2'
+print("liver_fat_cat2")
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+#' variables are the output y in lm(y ~ .):
+#print(proteins)
+
+print('nr of variables inspected:')
+print(length(proteins))
+
+print('nr of individuals inspected:')
+print(dim(gal_met_prot_data))
+
+```
+
+To identify proteins and metabolites related with the 2 (none, MASLD) of the 4 
+SLD types (none, MASLD, MetALD, SLD), seperate linear regression models are 
+fitted for all proteins and metabolites separately (as a response) with sex, 
+age and the (categorical) FIB4 as a covariates.
+
+Model coefficients and p-values are provided. Raw p-values are adjusted for
+multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+```{r logistic-model-t2d}
+funForLogReg <- function(analyte, data) {
+    y <- data[, analyte]
+    data <- data[, c("Sex", "Age_10", "T2D", TARGET)]
+    res <- coef(summary(glm(y ~ ., data = data)))[-1, ]
+    pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
+    rownames(pvals) <- analyte
+    colnames(pvals) <- c(paste0("coef_", rownames(res)),
+                         paste0("p-value_", rownames(res)))
+    pvals
+}
+
+#' tests
+#gal_met_prot_data[1:5, c("Sex", "Age", "FIB4")]
+#gal_met_prot_data[1:5, proteins[1]]
+#data <- gal_met_prot_data
+#analyte <- proteins[1]
+#funForLinReg(analyte, gal_met_prot_data)
+#analyte <- proteins[14]
+#funForLinReg(analyte, gal_met_prot_data)
+
+#' Fit linear models and extract coefficients and p-values on each protein
+lm_output <- lapply(proteins, FUN = funForLogReg, data = gal_met_prot_data) |>
+    do.call(what = rbind)
+
+#' Adjust p-values for multiple hypothesis testing
+adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+lm_output <- cbind(lm_output, adjp)
+
+```
+
+Next we calculate the effect sizes.
+
+To obtain comparable coefficients, prior to linear modelling all the 
+proteins
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant). In such
+autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
+parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r glm-effectsize-t2d, message=FALSE}
+#' Perform autoscaling for effect size (es) calculation
+gal_met_prot_data_scaled <- gal_met_prot_data
+gal_met_prot_data_scaled[, proteins] <- gal_met_prot_data[, proteins] |>
+    as.matrix() |>
+    scale(scale = TRUE)
+
+#' fit linear models and extract the coefficients
+es <- lapply(proteins, FUN = funForLogReg, data = gal_met_prot_data_scaled) |>
+    do.call(what = rbind)
+es <- es[, grep("coef", colnames(es))]
+colnames(es) <- sub("coef", "effectSize", colnames(es))
+lm_output <- cbind(lm_output, es)
+#head(lm_output)
+
+```
+
+To call a proteins *significant* we consider, in addition to the
+*statistical* significance levels also the magnitude of its coefficient,
+relative to the coefficient of variation (CV) for that protein. The CV,
+calculated on study-internal QC samples (pools of all samples) are a measure of
+the technical noise specific for that protein in the present data set. Thus,
+with this method we prioritize proteins with a larger difference between the
+observed (biological) difference and the (separately estimated) technical variance.
+
+Below we add thus evaluate for each protein and comparison whether it
+fulfills that criteria.
+
+```{r glm-define significance criteria-t2d}
+#' define the different coefficients as comparisons
+comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
+
+#' define which proteins are considered statistically significant
+sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
+colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
+#colSums(sign_p)
+
+#' Convert the (absolute) difference in abundance into a difference in
+#' percentage based on a (log2) coefficient.
+diff_percentage <- function(x) {
+    (2^abs(x) - 1) * 100
+}
+diff_perc <- apply(lm_output[, comps], MARGIN = 2, diff_percentage)
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
+
+#' Define for which proteins the difference in concentration is larger
+#' than a certain proportion of the CV
+cv_cut <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  ##after eval, set to 50
+        prot_ann[proteins, "cv_qc_chris"]
+}) |>
+    do.call(what = cbind)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
+
+#' Use statistical significance for non-categorical traits instead of bool
+sign_cv <- sign_p & cv_cut
+sign_cv[, "significant_Age_10"] <- sign_p[, "significant_Age_10"]
+
+#' Combine with result from linear model converting to a data.frame to
+#' avoid logicals being converted to numeric
+lm_output <- data.frame(lm_output, sign_cv)
+
+```
+
+The number of proteins called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below. For a complete
+comparison, the number of proteins complying to either the adjusted p value
+or either the CV-value, as single threshold criteria, are calculated and
+summarized here as well.
+
+```{r glm-table-sig-t2d, results = "asis"}
+#' merge to p-adj to cv significance summary
+sig_tab <- data.frame(
+    `p_adj < 0.05` = colSums(sign_p),
+    `cv thresh` = colSums(cv_cut),
+    significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
+    check.names = FALSE)
+
+pandoc.table(
+    sig_tab, style = "rmarkdown",
+    caption = paste0("Number of significant proteins per tested covariate. ",
+                     " *p_adj < 0.05*: number of statistically significant",
+                     " proteins.",
+                     " *cv*: number of proteins with percentage abundance",
+                     " difference above the CV-based threshold.",
+                     " *significant*: number of proteins that fulfill ",
+                     "the CV-based criteria in addition to the p-adj. threshold"))
+
+```
+
+Export results for inspection:
+
+```{r glm-export-results-t2d}
+results <- data.frame(
+    prot_ann[rownames(lm_output), c("description", "long_description", "PeptideNN",
+                         "PeptideNames", "Protein.Ids", "Protein.Names",
+                         "Genes", "Modified.Sequence", "Stripped.Sequence",
+                         "Precursor.Id", "cv_qc_chris")],
+    lm_output,
+    diff_perc
+)
+
+#colnames(results)
+#colnames(lm_output)
+
+#' write to file for manual inspection,
+#' inclusing inspection of the CV-value of each protein
+handle <- file.path(RDATA_PATH, 'lm_output_results_proteins_t2d.txt')
+write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+
+```
+
+
+## Logistic model with naab13_cat with T2D - metabolites
+
+logistic models setup:
+
+```{r define-lm-covariates-and-target-t2d}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10", "T2D")
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat2'
+print("liver_fat_cat2")
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+#' variables are the output y in lm(y ~ .):
+#print(metabolites)
+
+print('nr of variables inspected:')
+print(length(metabolites))
+
+print('nr of individuals inspected:')
+print(dim(gal_met_prot_data))
+
+```
+
+To identify metabolites related with the 2 (none, MASLD) of the 4 SLD types
+(none, MASLD, MetALD, SLD), seperate linear regression models are fitted for all
+metabolites separately (as a response) with sex, age and the (categorical)
+FIB4 as a covariates.
+
+Model coefficients and p-values are provided. Raw p-values are adjusted for
+multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+```{r linear model-t2d, message = FALSE}
+#' Define a function to fit the linear model:
+#' - fit the linear model
+#' - extract the coefficients and p-values skipping the intercept
+#' - return the result as a one-row matrix, columns being coefficients
+#'   and p-values
+funForLinReg <- function(analyte, data) {
+    y <- data[, analyte]
+    data <- data[, c("Sex", "Age_10", "T2D", TARGET)]
+    res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
+    pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
+    rownames(pvals) <- analyte
+    colnames(pvals) <- c(paste0("coef_", rownames(res)),
+                         paste0("p-value_", rownames(res)))
+    pvals
+}
+
+#' tests
+#gal_met_prot_data[1:5, c("Sex", "Age", "FIB4")]
+#gal_met_prot_data[1:5, metabolites[1]]
+#data <- gal_met_prot_data
+#analyte <- metabolites[1]
+#funForLinReg(analyte, gal_met_prot_data)
+#analyte <- metabolites[14]
+#funForLinReg(analyte, gal_met_prot_data)
+
+#' Fit linear models and extract coefficients and p-values on each protein
+lm_output <- lapply(metabolites, FUN = funForLinReg, data = gal_met_prot_data) |>
+    do.call(what = rbind)
+
+#' Adjust p-values for multiple hypothesis testing
+adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+lm_output <- cbind(lm_output, adjp)
+
+```
+
+Next we calculate the effect sizes.
+
+To obtain comparable coefficients, prior to linear modelling all the metabolites
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant). In such
+autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
+parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r effectsize-t2d, message=FALSE}
+#' Perform autoscaling for effect size (es) calculation
+gal_met_prot_data_scaled <- gal_met_prot_data
+gal_met_prot_data_scaled[, metabolites] <- gal_met_prot_data[, metabolites] |>
+    as.matrix() |>
+    scale(scale = TRUE)
+
+#' fit linear models and extract the coefficients
+es <- lapply(metabolites, FUN = funForLinReg, data = gal_met_prot_data_scaled) |>
+    do.call(what = rbind)
+es <- es[, grep("coef", colnames(es))]
+colnames(es) <- sub("coef", "effectSize", colnames(es))
+lm_output <- cbind(lm_output, es)
+#head(lm_output)
+
+```
+
+To call a metabolites *significant* we consider, in addition to the
+*statistical* significance levels also the magnitude of its coefficient,
+relative to the coefficient of variation (CV) for that protein. The CV,
+calculated on study-internal QC samples (pools of all samples) are a measure of
+the technical noise specific for that protein in the present data set. Thus,
+with this method we prioritize metabolites with a larger difference between the
+observed (biological) difference and the (separately estimated) technical variance.
+
+Below we add thus evaluate for each protein and comparison whether it
+fulfills that criteria.
+
+```{r define significance criteria-t2d}
+#' define the different coefficients as comparisons
+comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
+
+#' define which metabolites are considered statistically significant
+sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
+colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
+#colSums(sign_p)
+
+#' Convert the (absolute) difference in abundance into a difference in
+#' percentage based on a (log2) coefficient.
+diff_percentage <- function(x) {
+    (2^abs(x) - 1) * 100
+}
+diff_perc <- apply(lm_output[, comps], MARGIN = 2, diff_percentage)
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
+
+#' Define for which metabolites the difference in concentration is larger
+#' than a certain proportion of the CV
+cv_cut <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  ##after eval, set to 50
+        met_ann[metabolites, "cv_qc_chris"]
+}) |>
+    do.call(what = cbind)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
+
+#' Use statistical significance for non-categorical traits instead of bool
+sign_cv <- sign_p & cv_cut
+sign_cv[, "significant_Age_10"] <- sign_p[, "significant_Age_10"]
+
+#' Combine with result from linear model converting to a data.frame to
+#' avoid logicals being converted to numeric
+lm_output <- data.frame(lm_output, sign_cv)
+
+```
+
+The number of metabolites called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below. For a complete
+comparison, the number of metabolites complying to either the adjusted p value
+or either the CV-value, as single threshold criteria, are calculated and
+summarized here as well.
+
+```{r table-sig-t2d, results = "asis"}
+#' merge to p-adj to cv significance summary
+sig_tab <- data.frame(
+    `p_adj < 0.05` = colSums(sign_p),
+    `cv thresh` = colSums(cv_cut),
+    significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
+    check.names = FALSE)
+
+pandoc.table(
+    sig_tab, style = "rmarkdown",
+    caption = paste0("Number of significant metabolites per tested covariate. ",
+                     " *p_adj < 0.05*: number of statistically significant",
+                     " metabolites.",
+                     " *cv*: number of metabolites with percentage abundance",
+                     " difference above the CV-based threshold.",
+                     " *significant*: number of metabolites that fulfill ",
+                     "the CV-based criteria in addition to the p-adj. threshold"))
+
+```
+
+Export results for inspection:
+
+```{r export-results-t2d}
+results <- data.frame(
+    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
+                                   "biochemical_name", "cv_qc_chris")],
+    lm_output,
+    diff_perc
+)
+
+#colnames(results)
+#colnames(lm_output)
+
+#' write to file for manual inspection,
+#' inclusing inspection of the CV-value of each protein
+handle <- file.path(RDATA_PATH, 'lm_output_results_metabolites_t2d.txt')
+write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+
+```
 
 
 # Acknowledgments
