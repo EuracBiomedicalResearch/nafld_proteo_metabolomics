@@ -171,7 +171,7 @@ head(df)
 
 #' write the mummichog input table
 handle <- file.path(DATA_PATH, 'mummichog_input.txt')
-write.table(df, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+write.table(df, file = handle, sep = "\t", row.names = FALSE, col.names = TRUE)
 
 ```
 
