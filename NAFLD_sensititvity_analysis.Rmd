@@ -1,5 +1,5 @@
 ---
-title: "NAFLD_sensititvity_analysis"
+title: "NAFLD_MASLD_sensititvity_analysis"
 author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
 affiliation: "Eurac Research, Bolzano, Italy"
 date: "2025-02-10"
@@ -49,7 +49,7 @@ potential unique metabolites/proteins between the lm in the MASLD cohort vs in
 the none (control, healthy) cohort of the NAFLD dataset.
 
 For this, the results are loaded of the saved lm results file for fibrosis and
-steatosis, each time run and renamed according to its subcohort ()MASLD, none).
+steatosis, each time run and renamed according to its subcohort (MASLD, none).
 
 
 # Setup
@@ -58,7 +58,7 @@ steatosis, each time run and renamed according to its subcohort ()MASLD, none).
 
 ```{r directories, echo = FALSE}
 #' General settings
-filename <- " NAFLD_sensititvity_analysis"
+filename <- " NAFLD_MASLD_sensititvity_analysis"
 
 #' Path to the data
 #FINDME!!  see manual below
