@@ -249,7 +249,7 @@ distribution?" (**).
 met_data <- log2(met_data)
 
 #' plot histogram
-hist(met_data, main ="")
+hist(met_data, main = "")
 
 #' normality testing for each metabolic feature
 Shapiro_Wilk_test <- function(sampleMatrix) {
@@ -358,7 +358,7 @@ met_data$Age_10 <- met_data$Age / 10
 ```
 
 
-# Aditional filtering of participants to match tprot, tmetab lms
+# Aditional filtering of participants to match tprot, tmetab lms of steatosis story
 
 ```{r load-liver-param}
 #' from same excel loaded above, already added to met_data
@@ -436,7 +436,7 @@ participant with a liver_stiffness = 18.4.
 ```{r subset-liver_stiffness-outlier}
 #' remove 1 participant with max liver_stiffness value
 
-median(na.omit(met_data$liver_stiffness ))
+median(na.omit(met_data$liver_stiffness))
 mean(na.omit(met_data$liver_stiffness))
 sd(na.omit(met_data$liver_stiffness))
 summary(met_data$liver_stiffness)
@@ -684,7 +684,7 @@ together with the MASLD sld_type phenotype, but the gender and BMI do
 (therefore, it is nessecary to include these into lm as covariates).
 
 
-# Logistic model to evaluate SLD types - original
+# Logistic model to evaluate liver_fat_cat2 types - original
 
 Done for metabolites. FYI: here using lm function, but with factors for target,
 so logistic regression was performed.
@@ -1034,8 +1034,20 @@ datatable(results) |>
 
 ```
 
-There are `r nrow(sig_tab)` significantly associated metabolites for SLD type
-MASLD vs. none.
+There are `r nrow(sig_tab)` == 8! significantly associated metabolites for
+control vs grade 3 steatosis. Only 320 instead of 322 participants, because 
+overlap with umetab but fine. keep results with this amount (1 sample less in
+umetab).
+
+feature     mzmed 	rtmed 	cv_qc_chris 	coef 	    p.adj 	    effectSize
+FT00689 	131.1 	169.4 	0.2572      	0.6664  	0.001321 	0.711
+FT00940 	147.6 	169.3 	0.2453 	        0.6192  	0.001321 	0.7051
+FT03857 	329.1 	148.7 	0.3063      	0.4632  	0.02132 	0.6063
+FT01935 	214.1 	207 	0.7897      	-0.7542 	0.02157 	-0.6002
+FT00688 	131.1 	175.8 	0.1374       	-0.1285 	0.02521 	-0.6075
+FT00949 	148.1 	169.3 	0.2163       	0.361 	    0.03882 	0.5832
+FT00968 	149.1 	169.3 	0.4662      	0.4062  	0.03882 	0.5869
+FT00181 	84.05 	169.4 	0.3353      	0.4948  	0.04028 	0.5797
 
 
 Significant metabolites adjusted for age and sex (top 5) are visualized in
@@ -1098,13 +1110,13 @@ subsequent analysis (eg pathway enrichment and analysis).
 results$AID <- rownames(results)
 
 #' write results (original order) for further analysis
-handle <- file.path(DATA_PATH, 'lm_output_results_metab.txt')
+handle <- file.path(RDATA_PATH, 'lm_output_results_umetab_liver_fat_cat2.txt')
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
 
 
-# Logistic model to evaluate SLD types - with BMI
+# Logistic model to evaluate liver_fat_cat2 types - with BMI
 
 Done for metabolites. FYI: here using lm function, but with factors for target,
 so logistic regression was performed.
@@ -1518,7 +1530,7 @@ subsequent analysis (eg pathway enrichment and analysis).
 results$AID <- rownames(results)
 
 #' write results (original order) for further analysis
-handle <- file.path(DATA_PATH, 'lm_output_results_metab-BMI.txt')
+handle <- file.path(RDATA_PATH, 'lm_output_results_umetab-BMI_liver_fat_cat2.txt')
 write.table(results, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
 
 ```
