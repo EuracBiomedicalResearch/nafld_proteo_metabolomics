@@ -2734,14 +2734,76 @@ plt
 ```
 
 
+
 ## Pathway analysis: proteins and metab, other
 
 plan:
 
-- [] floorplan of coagulation and AA metabolism
-- [] add barplots of measured metab/prot with background (prot/metab) and 
-control, grade S3 steatosis 2 bars, with '*' if significant (lm's).
+- [x] find related pathways and perform pathway enrichment with Ramp-DB. 
+      https://rampdb.nih.gov/pathway-enrichment. see rampdb-test.ods
+- [x] manually curate and define the pathway clusters, also split again proteins
+      and metabolites (since no overlap).
+- [ ] floorplan of coagulation and AA metabolism, make/paste in ppt.
+- [ ] add barplots of measured metab/prot with background (prot/metab) and 
+     control, grade S3 steatosis 2 bars, with '*' if significant (lm's).
+     For now, boxplots and only of the significant ones, can change in the
+     future.
+- [x] optional: add umetab results from mummichog for validation of the 
+     targeted p180 metabolites results. Or just as a sentence (incl in M&M)
+     that this was confirmed and SI table of found pathways.
 
+
+Box plots for on the plot pathway:
+
+1) Response to elevated platelet cytosolic Ca2+
+
+```{r}
+#' Response to elevated platelet cytosolic Ca2+
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01011, main = 'SERPINA3')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Q14624, main = 'ITIH4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
+
+```
+
+
+2) Network map of SARS-CoV-2 signaling pathway
+
+```{r}
+#' Network map of SARS-CoV-2 signaling pathway
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Q14624, main = 'ITIH4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P02750, main = 'LRG1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 'CFI')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
+
+```
+
+3) Post-translational protein phosphorylation
+
+```{r}
+#' Post-translational protein phosphorylation
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01008, main = 'SERPINC1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05546, main = 'SERPIND1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01024, main = 'C3')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P00450, main = 'CP')
+
+```
+
+4) Complement and coagulation cascades
+
+```{r}
+#' Complement and coagulation cascades
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01008, main = 'SERPINC1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05546, main = 'SERPIND1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01024, main = 'C3')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P02748, main = 'C9')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P04004, main = 'VTN')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 'CFI')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
+
+```
 
 
 # Sensitivity analysis to investigate T2D
