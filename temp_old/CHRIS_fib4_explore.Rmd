@@ -1,0 +1,262 @@
+---
+title: "CHRIS_fib4_explore"
+author: "Marilyn De Graeve, Essi Hantikainen, Johannes Rainer"
+affiliation: "Eurac Research, Bolzano, Italy"
+date: "2024-04-05"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+editor_options:
+  markdown:
+    wrap: 72
+bibliography: references.bib
+---
+
+**Modified**: `r file.info("CHRIS_fib4_explore.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("    Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
+  }
+}))
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+
+```
+
+# Introduction
+
+Load CHRIS data (001...) and calculate the fib4 from proteomics data.
+
+
+# Setup
+
+## Directories
+
+```{r directories, echo = FALSE}
+#' General settings
+filename <- "CHRIS_fib4_explore"
+
+#' Path to save images to; remove if exists.
+IMAGE_PATH <- paste0("images/", filename, "/")
+#if (file.exists(IMAGE_PATH))
+#    unlink(IMAGE_PATH, recursive = TRUE)
+dir.create(IMAGE_PATH, recursive = TRUE)
+
+#' Path to store RData files
+RDATA_PATH <- paste0("data/RData/", filename, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+
+#' PathS to the data
+DATA_INPUT_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD'  #FINDME!
+DATA_OUTPUT_PATH <- "data"
+```
+
+## Packages
+
+Data packages (*chrisData* and *chrisUtils*) and the ScanningSWATH TDFF data
+module *chris_scanningswath_proteins* are not publicly available. Any such data
+access needs to got through a *CHRIS Access Committee* request.
+
+```{r packages, message=FALSE}
+#' Load libraries
+library(atc) # https://github.com/jorainer/atc
+library(chron)
+library(chrisData)
+library(chrisUtils)
+library(DT)
+library(FamAgg)
+library(ggfortify)
+library(ggplot2)
+library(ggpubr)
+library(magick)
+library(mixOmics)
+library(pander)
+library(pheatmap)
+library(plotly)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
+options(rgl.useNULL = TRUE)
+library(rgl)
+library(tidyfr)
+library(UpSetR)
+library(vioplot)
+library(writexl)
+
+```
+
+# Load clinical data CHRIS 001 set
+
+From the clinical data, take the following:
+
+```{r fib4-calc}
+#' Biochemical traits (labdata)
+#' lab param in Table 1.1: Blood parameters
+#' find the right name: chrisDataFile()
+lab <- chrisData("labdata")
+rownames(lab) <- lab$AID
+#colnames(lab)
+#rownames(lab)[1:10]
+#lab$AID[1:10]
+#nrow(lab)
+#head(lab)
+
+
+#' retaining if interesting variable, don't keep AID col
+#' blood
+blood_params <- c('x0lp02aq',
+                    'x0lp03', 'x0lp04q', 'x0lp05', 'x0lp06b', 'x0lp07', 'x0lp08', 'x0lp09', 'x0lp10',
+                    'x0lp11q', 'x0lp12q', 'x0lp13', 'x0lp14bq', 'x0lp15q', 'x0lp16', 'x0lp17', 'x0lp18', 'x0lp19',
+                    'x0lp20', 'x0lp21', 'x0lp22', 'x0lp23a', 'x0lp24', 'x0lp25aq', 'x0lp26a', 'x0lp27', 'x0lp28q', 'x0lp29',
+                    'x0lp30', 'x0lp31', 'x0lp32q', 'x0lp33q', 'x0lp35', 'x0lp38', 'x0lp39',
+                    'x0lp40', 'x0lp41', 'x0lp42', 'x0lp43', 'x0lp44', 'x0lp45', 'x0lp46', 'x0lp47', 'x0lp48',
+                    'x0lp50f', 'x0lp50g', 'x0lp50h', 'x0lp50i', 'x0lp50j', 'x0lp51a', 'x0lp52q',
+                    'x0lp82', 'x0lp83', 'x0lp84')
+
+
+"0010224047" %in% rownames(lab) #T
+"0080208536" %in% rownames(lab) #F
+
+#lab$x0lp47
+
+```
+
+For correct age of 001:
+
+```{r}
+chris_general <- chrisData("general")
+rownames(chris_general) <- chris_general$AID
+
+```
+
+
+# Metadata (excel)
+
+All available trait (phenotype) data was defined in the
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd), is loaded below and merged
+with the log2 transformed proteomics data of the NAFLD cohort.
+
+```{r add phenotype dataa}
+#' load xlsx file instead of below
+handle <- 'masld_phenotypes.xlsx'
+masld_phenotype_df <- read_excel(file.path(DATA_INPUT_PATH, handle)) |>
+    as.data.frame()
+
+
+#' make sure sld_type is a factor with group 'none' as the baseline
+masld_phenotype_df$sld_type <- factor(masld_phenotype_df$sld_type,
+                                      levels = c('none', 'MASLD',
+                                                 'MetALD', 'SLD'))
+print('the sld types are:')
+levels(masld_phenotype_df$sld_type)
+print('nr of samples per sld types:')
+table(masld_phenotype_df$sld_type)
+
+```
+
+# FIB4 calcualtion and comparison with 008 set
+
+```{r}
+#' Fib4_chris
+
+#handle <- 'data/kor_met_prot_data.txt'
+#df <- read.table(file = handle, sep = "\t", header = TRUE)
+
+df <- masld_phenotype_df
+#df$AID_chris
+#df$AID
+
+colnames(df)
+
+# keep only overlapping with chris in masld df
+lab <- lab[df$AID_chris, ]
+chris_general <- chris_general[df$AID_chris, ]
+
+#' add remaining for fib4 (incl 001 age):
+df$Age_chris001 <- chris_general$x0_age
+df$Platelet_Count_chris001 <- lab$x0lp47     #Platelet Count (10^9/L) == x0lp47   Platelets (PLT) – x1000/µL
+df$AST_chris001 <- lab$x0lp10                #AST level (U/L) == x0lp10   Aspartate aminotransferase (AST) – U/L
+df$ALT_chris001 <- lab$x0lp11q               #ALT level (U/L) == x0lp11   Alanine aminotransferase (ALT) – U/L;
+                                    #x0lp11q    Alanine aminotransferase (ALT) – U/L
+                                    #x0lp11q contains numeric values
+                                    #only; limit of detection values in
+                                    #x0lp11 were replaced with the next
+                                    #lower valid value
+
+df$FIB4_chris001 <- ((df$Age_chris001 * df$AST_chris001)/(df$Platelet_Count_chris001 * sqrt(df$ALT_chris001)))
+print('FIB$ of 001 chris baseline:')
+summary(df$FIB4_chris001)
+print('FIB$ of 008 nafld:')
+summary(df$FIB4)
+
+plot(df$FIB4_chris001, df$FIB4)
+
+```
+
+Correlate very well, fib4 from chris001 was calcualted, while the fib4 from
+nafld008 comes from the excel (and cannot be recalculated, see next code chunk).
+While the age differs, actually less effect than initially expected.
+
+# FIB4 calculate again to check 008
+
+```{r, eval = FALSE}
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+lab <- nafldData("labdata")
+rownames(lab) <- lab$AID
+colnames(lab)
+
+"0010224047" %in% rownames(lab) #F
+"0080208536" %in% rownames(lab) #T
+nalp47
+
+# keep only overlapping with chris in masld df
+df <- masld_phenotype_df
+lab <- lab[df$AID_chris, ]
+
+#' add remaining for fib4:
+df$Platelet_Count_chris008 <- lab$nalp47     #PLT (x1000/µl)
+#df$AST_chris008 <- NO       #AST level (U/L) == x0lp10   Aspartate aminotransferase (AST) – U/L
+#df$ALT_chris008 <- NO       #ALT level (U/L) == x0lp11   Alanine aminotransferase (ALT) – U/L;
+
+#but age anyway older....
+#df$FIB4_chris008 <- ((df$Age_chris008 * df$AST_chris008)/(df$Platelet_Count_chris008 * sqrt(df$ALT_chris008)))
+
+
+#' add remaining for fib4:
+#df$Platelet_Count <- lab$x0lp47
+
+```
+
+# Correlate age 
+
+```{r}
+
+print('Age of 001 chris baseline:')
+summary(df$Age_chris001)
+print('Age of 008 nafld:')
+summary(df$Age)
+
+plot(df$Age_chris001, df$Age)
+
+```
