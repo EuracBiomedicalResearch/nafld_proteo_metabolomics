@@ -2840,6 +2840,8 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gly, main = 'Gl
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Phe, main = 'Phe')
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Trp, main = 'Trp')
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gln, main = 'Gln')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`alpha-AAA`, main = 'alpha-AAA')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$SDMA, main = 'SDMA')
 
 ```
 
