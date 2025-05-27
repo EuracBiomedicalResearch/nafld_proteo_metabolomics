@@ -1050,10 +1050,10 @@ FT00968 	149.1 	169.3 	0.4662      	0.4062  	0.03882 	0.5869
 FT00181 	84.05 	169.4 	0.3353      	0.4948  	0.04028 	0.5797
 
 
-Significant metabolites adjusted for age and sex (top 5) are visualized in
+Significant metabolites adjusted for age and sex (top 8) are visualized in
 boxplot in next figure. Points are colored according to sample sex.
 
-```{r BP_Glu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+```{r boxplots, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
 box_plot <- function(data, aes, analyte) {
     ggplot(data, aes) +
         geom_jitter(position = position_jitter(0.24),
@@ -1066,35 +1066,41 @@ box_plot <- function(data, aes, analyte) {
 }
 
 #' boxplot for metabolite
-s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = FT00940),
-                analyte = "FT00940")
-ggplotly_or_not(s_1, PLOTLY)
-
-```
-
-```{r BP_lysoPC, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00181`),
-                analyte = "FT00181")
-ggplotly_or_not(s_1, PLOTLY)
-```
-
-```{r Ile, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
 s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00689`),
                 analyte = "FT00689")
 ggplotly_or_not(s_1, PLOTLY)
-```
 
-```{r Leu, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00940`),
+                analyte = "FT00940")
+ggplotly_or_not(s_1, PLOTLY)
+
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT03857`),
+                analyte = "FT03857")
+ggplotly_or_not(s_1, PLOTLY)
+
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT01935`),
+                analyte = "FT01935")
+ggplotly_or_not(s_1, PLOTLY)
+
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = FT00688),
+                analyte = "FT00688")
+ggplotly_or_not(s_1, PLOTLY)
+
 s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00949`),
                 analyte = "FT00949")
 ggplotly_or_not(s_1, PLOTLY)
+
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00968`),
+                analyte = "FT00968")
+ggplotly_or_not(s_1, PLOTLY)
+
+s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00181`),
+                analyte = "FT00181")
+ggplotly_or_not(s_1, PLOTLY)
+
 ```
 
-```{r H1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
-s_1 <- box_plot(met_data, aes(x = liver_fat_cat2, y = `FT00528`),
-                analyte = "FT00528")
-ggplotly_or_not(s_1, PLOTLY)
-```
+save model
 
 ```{r save results for sensitivity analysis}
 #' get coef values from both lm models
