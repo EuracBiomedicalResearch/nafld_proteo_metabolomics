@@ -2755,6 +2755,8 @@ plan:
 
 Box plots for on the plot pathway:
 
+Proteins:
+
 1) Response to elevated platelet cytosolic Ca2+
 
 ```{r}
@@ -2777,6 +2779,8 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P02750, main = 'LRG1')
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 'CFI')
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05090, main = 'APOD')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$O95445, main = 'APOM')
 
 ```
 
@@ -2804,6 +2808,74 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 
 plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
 
 ```
+
+Metabolites and lipids:
+
+5) Lipids biosynthesis and degradation
+
+As all except one has same direction, and only 1 dot on the pathways, we only 
+add one PC and one lysoPC for on the map. We take the top-ranking ones. idem for
+the top SM.
+
+```{r}
+#' Lipids synthesis/degradation
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`PC ae C34:3`, main = 'PC ae C34:3')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`lysoPC a C24:0`, main = 'lysoPC a C24:0')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`lysoPC a C20:4`, main = 'lysoPC a C20:4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
+
+```
+
+6) AAs biosynthesis and degradation
+
+```{r}
+#' AAs synthesis/degradation
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Glu, main = 'Glu')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Tyr, main = 'Tyr')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Val, main = 'Val')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ile, main = 'Ile')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ala, main = 'Ala')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Leu, main = 'Leu')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gly, main = 'Gly')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Phe, main = 'Phe')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Trp, main = 'Trp')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gln, main = 'Gln')
+
+```
+
+7) carnitines beta oxidation
+
+```{r}
+#' carnitines beta-oxidat
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C0, main = 'C0')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C3, main = 'C3')
+
+```
+
+8) BCAA and carnitines
+
+```{r}
+#' BCAA and carnitines
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C5, main = 'C5')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C4, main = 'C4')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C3, main = 'C3')
+#plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`C4:1`, main = 'C4:1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Leu, main = 'Leu')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Val, main = 'Val')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ile, main = 'Ile')
+
+```
+
+9) SM metabolism
+
+```{r}
+#' SM metabolism
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM (OH) C22:2`, main = 'SM (OH) C22:2')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C24:1`, main = 'SM C24:1')
+plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
+
+```
+
 
 
 # Sensitivity analysis to investigate T2D
