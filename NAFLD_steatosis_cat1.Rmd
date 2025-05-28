@@ -955,7 +955,7 @@ venn(x)
 ```
 
 
-# Logistic model with naab13_cat - diet
+# Logistic model with naab13_cat1 - diet
 
 Done for kora scores (diet).
 
@@ -1237,6 +1237,72 @@ pheatmap(es_results, display_numbers = es_results_sig,
 
 ```
 
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r diet-heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results <- results[, grep("coef_", colnames(results))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results <- coef_results[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results <- results[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results <- coef_results[rowSums(sig_results) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results)
+
+#' hierarchical clustering
+#clust1 <- hclust(dist((coef_results)), method = "ward.D")
+#clust2 <- hclust(dist(t(coef_results)), method = "ward.D") #only 1 signif
+
+#' clean roundup nrs for plot
+coef_results[coef_results == 0] <- NA
+coef_results <- round(coef_results, 2)
+
+#' in long format
+coef_results_long <- melt(as.matrix(coef_results))
+
+#' ggplot
+plt <- coef_results_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+        #expand = c(0, 0), limits = colnames(coef_results)[clust2$order]) +
+    #scale_y_discrete(
+        #expand = c(0, 0), limits = rownames(coef_results)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_sig <- coef_results
+coef_results_sig[as.matrix(sig_results)[rownames(coef_results), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results) <- sub("Coefficient_", "", colnames(coef_results))
+#pheatmap(coef_results, display_numbers = es_results_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
+```
+
 A considerable number of koras are significant both for MASLD and for sex,
 in many cases even with the same sign.
 
@@ -1396,7 +1462,7 @@ ggplotly_or_not(s_1, PLOTLY)
 
 Butter.
 
-# Logistic model with naab13_cat2 - proteins
+# Logistic model with naab13_cat1 - proteins
 
 Done for proteomics. FYI: here glm func, but actually same as lm is using 
 factors.
@@ -1679,6 +1745,72 @@ pheatmap(es_results, display_numbers = es_results_sig,
 A considerable number of proteins are significant both for MASLD and for sex,
 in many cases even with the same sign.
 
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r glm-heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results <- results[, grep("coef_", colnames(results))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results <- coef_results[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results <- results[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results <- coef_results[rowSums(sig_results) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results[coef_results == 0] <- NA
+coef_results <- round(coef_results, 2)
+
+#' in long format
+coef_results_long <- melt(as.matrix(coef_results))
+
+#' ggplot
+plt <- coef_results_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_sig <- coef_results
+coef_results_sig[as.matrix(sig_results)[rownames(coef_results), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results) <- sub("Coefficient_", "", colnames(coef_results))
+#pheatmap(coef_results, display_numbers = es_results_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
+```
+
 We investigate the associations for MASLD, i.e. the difference in average
 concentrations between participants of SLD types *MASLD* and *none*. We show the
 results for that coefficient using a volcano plot, coloring significant
@@ -1882,7 +2014,7 @@ ggplotly_or_not(s_1, PLOTLY)
 ```
 
 
-# Logistic model with naab13_cat - metabolites
+# Logistic model with naab13_cat1 - metabolites
 
 Done for metabolites. FYI: here using lm function, but with factors for target,
 so logistic regression was performed.
@@ -2094,7 +2226,7 @@ We visualize the associations in a heatmap. The effect size are added for the
 associations, for the significant metabolites (min 1 significance to
 covariate). also for the not significant associations, the effect size is shown.
 
-```{r heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for metabolites with at least one significant association.", eval = FALSE}
+```{r heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for metabolites with at least one significant association."}
 #' Extract effect sizes
 es_results <- results[, grep("effectSize_", colnames(results))] |>
     as.matrix()
@@ -2148,7 +2280,7 @@ plt
 In second plot, only the significant effect size labels were added to the
 heat map. also, the dendograms after hierarchical clustering are shown.
 
-```{r heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown.", eval = FALSE}
+```{r heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
 #' keep just the effect sizes of the significant associations
 es_results_sig <- es_results
 es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
@@ -2161,6 +2293,72 @@ sum(es_results_sig[, 'effectSize_liver_fat_cat14'] != "")
 colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
 pheatmap(es_results, display_numbers = es_results_sig,
          number_color = "#444444", fontsize_number = 7)
+
+```
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results <- results[, grep("coef_", colnames(results))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results <- coef_results[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results <- results[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results <- coef_results[rowSums(sig_results) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results[coef_results == 0] <- NA
+coef_results <- round(coef_results, 2)
+
+#' in long format
+coef_results_long <- melt(as.matrix(coef_results))
+
+#' ggplot
+plt <- coef_results_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_sig <- coef_results
+coef_results_sig[as.matrix(sig_results)[rownames(coef_results), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results) <- sub("Coefficient_", "", colnames(coef_results))
+#pheatmap(coef_results, display_numbers = es_results_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
 
 ```
 
