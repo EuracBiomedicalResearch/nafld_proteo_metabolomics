@@ -1,0 +1,503 @@
+---
+title: "Mummichog annotation on NAFLD umetab (pos) after lm with liver_fat_cat2"
+author: "Marilyn De Graeve, Johannes Rainer"
+affiliation: "Eurac Research, Bolzano, Italy"
+date: "2024-12-13"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+**Modified**: `r file.info("NAFLD_umetab_naab13cat2_mummichog.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r configuration, include = TRUE, cached = FALSE}
+
+#' introduction
+STUDY <- "NAFLD cohort"
+TARGET <- "liver_fat_cat2"
+DATASET <- "untargeted metabolomics, positive mode"
+
+#' settings
+FILENAME <- "NAFLD_umetab_naab13cat2_mummichog"
+LOCATION <- 'local' #'server' OR 'local', change in chunk directories if needed
+
+#' target variables
+#print('target of the linear regression model:')
+TARGET_COLNAME <- 'liver_fat_cat2'
+#print('more concrete defined target of the linear regression model:')
+TARGET_LMNAME <- 'liver_fat_cat22'
+
+```
+
+
+```{r style, echo = FALSE, results = "hide", message = FALSE}
+#' rmarkdown format settings
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("    Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
+  }
+}))
+BiocStyle::markdown()
+
+```
+
+# Introduction
+
+In this document, the Mummichog algorithm from *todo!!!* are performed on the
+significant metabolite list on the targeted metabolomics data after statistical
+analyis.
+
+We use the logistic regression analysis results table from:
+(nafld_proteo_metabolomics/NAFLD_metab_untargeted_pos_lm.html)[nafld_proteo_metabolomics/NAFLD_metab_untargeted_pos_lm.html].
+There, the exploratory statistical analyis (linear models) are performed on the
+untargeted metabolomics data from the CHRIS-NAFLD study; using the
+catagoris variable "liver_fat_cat22" as a target of interest. Other covariates
+were sex and age. 
+
+The (static) table with the significant metabolites contained 8
+significant variables, to use the Mummichog algoritm, input is full list, so
+also give the not-significant feature their adj p-values. 
+
+
+# Setup
+
+## Directories
+
+```{r directories}
+#' General settings
+filename <- "NAFLD_umetab_naab13cat2_mummichog"
+
+#' Path to the data
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_metab_untargeted_pos_lm/' #FINDME!      /home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_metab_untargeted_pos_lm/
+#DATA_OUTPUT_PATH <- "data"
+
+```
+
+## Packages
+
+```{r packages}
+
+
+```
+
+## functions
+
+```{r functions}
+
+
+```
+
+# Steps
+
+The following steps are performed:
+
+- [x] in the metabo_chris_untargeted/CHRIS_lm_pos.html: write table with the ALL
+  (both significant and non-significant) metabolites with mz, rt, id, p-value (=
+  adj.p lm) and statistic (= coef lm) after performing lm with `r TARGET` as
+  target, using the `R DATASET` dataset.
+- [x] rename colnames so c(m/z, retention_time, p_value, statistic,
+  CompoundID_from_user, ...)
+- [x] run mummichog 
+  - [x] now via bash, 
+  - [/] future w spectripy
+- [x] load and cleanup results into 1 df.
+- [/] add results as putative IDs into the sumExp object and save as Rdata.
+
+
+# Load and rename results from lm
+
+load the results from lm analysis. write table with the ALL
+(both significant and non-significant) metabolites with mz, rt, id, p-value (=
+  adj.p lm) and statistic (= coef lm) after performing lm with `r TARGET` as
+  target, using the `R DATASET` dataset.
+
+```{r load-results-lm}
+
+#' load data lm-results
+handle <- file.path(DATA_PATH, 'lm_output_results_umetab_liver_fat_cat2.txt')
+lm_output_results_metab <- read.csv(handle, header = TRUE, sep="\t")  |>
+    as.data.frame()
+lm_output_results_metab[1:10, 1:10]
+dim(lm_output_results_metab)
+
+```
+
+rename colnames to c(m/z, retention_time, p_value, statistic,
+CompoundID_from_user, ...) so it fits the input in mummichog, write the table.
+
+```{r make-write-mummichog-input}
+#' make new df with correct names for mummichog
+df <- NULL
+df$m.z  <- lm_output_results_metab$mzmed
+df$retention_time  <- lm_output_results_metab$rtmed
+df$p_value  <- lm_output_results_metab[, paste0('p.adj_', TARGET_LMNAME)]
+df$statistic  <- lm_output_results_metab[, paste0('coef_', TARGET_LMNAME)]
+df$CompoundID_from_user <- lm_output_results_metab$AID
+df <- as.data.frame(df)
+head(df)
+
+#fyi: m/z ipv m.z, ok? yes
+
+
+#' write the mummichog input table
+handle <- file.path(DATA_PATH, 'mummichog_input.txt')
+write.table(df, file = handle, sep = "\t", row.names = FALSE, col.names = TRUE)
+
+```
+
+
+# Run mummichog algoritm 
+
+## Run mummichog algoritm using Bash
+
+Before trying to integrate the mummichog algorithm using spectripy, we first
+want to run it automatically from this script. it is run locally, on a Linux
+computer with the Mummichog installed according to the instructions from
+'https://github.com/shuzhao-li/mummichog'.
+
+After install using pip in the linux terminal, it is run using commands:
+
+- cd Documents/Files/Work_Eurac/Projects/biochem_pathway_analysis/
+- python3 -m mummichog.main -f testdata0710.txt -o t2
+
+the results are saved in the same folder, as the input. you will get a folder
+with various output. in the first instance, i.e. for the putative annotation of
+untargeted metabolic features, we are interested in 1 tabular output. See
+section [Results import] below.
+
+run the command using R (calls bash), for linux:
+
+```{r run-mummichog-from-bash}
+
+#TODO!!!
+#command <- 'python3.10 -m mummichog.main -f ~/Documents/Files/Work_Eurac/Projects/biochem_pathway_analysis/testdata0710.txt -o t2' #test
+#command <- 'bash ~/Documents/Files/Work_Eurac/Code/Sh_scripts/mummichog2.sh'
+#command <- 'python3.10 -m mummichog.main -f ~/Documents/Files/Work_Eurac/Projects/biochem_pathway_analysis/data/mummichog_input.txt -o t2'
+command <- 'python3.12 -m mummichog.main -f ~/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/data/RData/NAFLD_metab_untargeted_pos_lm/mummichog_input.txt -o t2' 
+
+command
+system(command)
+
+```
+
+This will be either called in the spectripy environment, if possible. will try
+that next. therefor, no need to go too much into win/linux differences (see old
+code marilyn if needed).
+
+
+# Results from mummichog (pasted from html report)
+
+For the NAFLD untargeted metabolomics - pos mode lm model with MAFLD sld type, 
+pasted from the mummichog html report:
+
+
+Mummichog Report: t2
+mummichog version: 2.7.0, using metabolic model MFN_1.10.4.
+User input data
+
+User supplied 10882 features as reference list.We are using 78 features (p < 0.200000) as significant list. The feature level data are shown in the Manhattan plots below.
+Top pathways
+
+The reference feature list is mapped to 532 EmpiricalCompounds, significant features to 12 EmpiricalCompounds. In the table below, pathway_size is number of detected EmpiricalCompounds for each pathway; overlap_size is number of significant EmpiricalCompounds. Empirical p-values are estimated by permutation test. Details on EmpiricalCompounds are in 'tables/ListOfEmpiricalCompounds.tsv'.
+Pathways 	overlap_size	pathway_size	p-value 	overlap_EmpiricalCompounds
+Purine metabolism 	4	28	0.00143	E213,E488,E274,E14
+Nitrogen metabolism 	2	6	0.00302	E274,E14
+Glutathione Metabolism 	2	9	0.00672	E171,E14
+Arginine and Proline Metabolism 	3	26	0.00723	E171,E274,E14
+Vitamin B3 (nicotinate and nicotinamide) metabolism 	2	10	0.00781	E274,E14
+Glutamate metabolism 	2	10	0.00781	E274,E14
+Alanine and Aspartate Metabolism 	2	11	0.01042	E274,E14
+Aminosugars metabolism 	2	16	0.01983	E274,E14
+Valine, leucine and isoleucine degradation 	2	19	0.02412	E9,E14
+Carbon fixation 	1	3	0.02571	E565
+Lysine metabolism 	2	22	0.03042	E515,E14
+Aspartate and asparagine metabolism 	3	49	0.03176	E171,E274,E14
+Methionine and cysteine metabolism 	2	26	0.03832	E14,E606
+Pyrimidine metabolism 	2	29	0.04571	E274,E14
+Top modules
+
+Network modules may capture concerted metabolite activities that are missed by predefined pathways. Use pull-down menus to visualize modules and the activity network, which tries to combine the results of pathway/module analyses. The visualization requires interenet connection.
+Showing
+Node size Visual style
+module_1, p=0.00446, 5 metabolites
+5-Oxoproline, L-Glutamate, L-Leucine, L-Isoleucine, L-Glutamine
+EmpiricalCompounds favored by above analyses
+
+An EmpiricalCompound is a computational unit for a tentative metabolite. It can group multiple ions, and be any of the isobaric/isomeric species. This table contains EmpiricalCompounds prioritized by pathway/module analysis.
+EmpiricalCompound	Input m/z 	Retention time	ion	mz_diff	Statistic 	Significant
+E171 	Best guess: C04282, 1-Pyrroline-4-hydroxy-2-carboxylate	C01879, C04281, C04282
+	152.031900666236 	175.563251387819	M+Na[1+]	0.0	-0.02	no
+	198.038224312001 	169.460765142265	M+HCOONa[1+]	0.0009	-0.21	no
+	130.050533235302 	175.794675266091	M+H[1+]	0.0007	-0.07	no
+	130.050326538094 	169.258016891767	M+H[1+]	0.0005	0.41	yes
+	131.053423804078 	175.772996569593	M(C13)+H[1+]	0.0001	-0.13	yes
+	131.052881275153 	169.351244113728	M(C13)+H[1+]	-0.0004	0.67	yes
+E565 	Best guess: C00279, D-Erythrose 4-phosphate	C00279
+	201.015802875844 	33.2074381743636	M+H[1+]	-0.0001	0.04	no
+	222.997777237245 	33.1988098525901	M+Na[1+]	-0.0001	0.76	yes
+E9 	Best guess: C00407, L-Isoleucine	C00123, C00407
+	154.083826186935 	149.216792267092	M+Na[1+]	-0.0001	0.22	no
+	132.102514777352 	149.119199747165	M+H[1+]	0.0006	0.18	no
+	133.10538154778 	148.235535180792	M(C13)+H[1+]	0.0001	0.13	yes
+E606 	Best guess: C02712, N-Acetylmethionine	C02712
+	214.051329273015 	206.998387554432	M+Na[1+]	0.0005	-0.75	yes
+E488 	Best guess: C11821, 5-Hydroxyisourate	C11821
+	185.03055983449 	140.168844037611	M+H[1+]	-0.0	0.35	yes
+	186.032803429111 	140.598836704487	M(C13)+H[1+]	-0.0012	0.3	no
+	207.012405662767 	140.874345026774	M+Na[1+]	-0.0002	0.39	no
+E515 	Best guess: C03793, N6,N6,N6-Trimethyl-L-lysine	C03793
+	211.143887812461 	44.0575279018813	M+Na[1+]	0.0021	0.21	yes
+	257.149628503066 	45.19503364425	M+HCOONa[1+]	0.0025	0.19	no
+E213 	Best guess: C00294, Inosine	C00294
+	269.088267405768 	142.609612316691	M+H[1+]	0.0002	-0.46	no
+	270.091176060444 	142.789472665335	M(C13)+H[1+]	-0.0003	-0.61	yes
+	291.07024352127 	142.966507264613	M+Na[1+]	0.0002	-0.41	no
+E274 	Best guess: C00819, D-Glutamine	C00064, C05100, C00819
+	169.058421834848 	175.584664990003	M+Na[1+]	0.0	-0.05	no
+	147.07714663581 	175.767827420671	M+H[1+]	0.0008	-0.1	yes
+	148.079397135472 	175.77525914372	M(C13)+H[1+]	-0.0004	-0.05	no
+E14 	Best guess: C05938, L-4-Hydroxyglutamate semialdehyde	C00217, C00025, C05938
+	148.060799740294 	169.340766074335	M+H[1+]	0.0003	0.36	yes
+	149.06369420469 	169.343572290557	M(C13)+H[1+]	-0.0002	0.41	yes
+More data
+
+Full data tables from pathway analysis, module analysis and activity network are stored in the 'tables/' directory. The tsv files can be imported into a spreadsheet program, e.g. MS Excel. Under the 'figures/network_modules/' directory are files intended for Cytoscape (cytoscape.org) visualization. Please refer to Cytoscape's guides for details. Details of this run are recorded in file mummichog.log.txt.
+Mummichog algorithms are described in Li et al. Predicting Network Activity from High Throughput Metabolomics. PLoS Computational Biology (2013); doi:10.1371/journal.pcbi.1003123. This software is provided as is, without warranty of any kind. Visit http://mummichog.org for updates.
+
+
+# Results mummichog import
+
+After running the algoritm (bash script on pc with py/mummichoc installed), 
+todo into spectripy... !!!,
+the following table os imported:
+
+- userInput_to_EmpiricalCompounds.tsv
+
+The first file is a copy of the data user gave to the algoritm, with the rowxxx identifiers needed as first column.
+The second file gives the hypothetical annotations (kegg ID and comon name used in KEGG) for the retrieved metabolites.
+
+please note that only metabolites which are present in KEGG can be retrieved using this approach.
+
+TODO!!! path, filename to auto select latest or in config?? or see git if name output cn change name/dir??
+
+```{r load-mummichig-result-table}
+#' load mummichog result files
+#' TODO rename using bash folder
+#DIR <- "1732118659.9126198.t2"   #test
+DIR <- '1734448517.6233082.t2'    #umetab-bmi-umetabpos-lm
+DIR <- '1737464806.4199815.t2'    #nafld-masld-umetabpos-lm aka
+DIR <- '1737464806.4199815.t2'    #nafld-umetab_MASLD_lm
+DIR <- '1747388849.322413.t2'     #nafld_umetab_naab13cat2_lm
+DATA_OUTPUT_PATH <- paste0('/home/mdegraeve/Documents/Files/Work_Eurac/Projects/nafld_proteo_metabolomics/', DIR, '/tables')
+#was saved in the working directory in VScode!
+
+
+#' userInput_to_EmpiricalCompounds
+handle <- file.path(DATA_OUTPUT_PATH, "userInput_to_EmpiricalCompounds.tsv")
+userInput_to_EmpiricalCompounds <- read.csv(handle, header = TRUE, sep="\t")  |>
+    as.data.frame()
+userInput_to_EmpiricalCompounds[1:10, 1:10]
+
+```
+
+info regarding results file:
+
+- adducts = str_row_ion
+- keggid = compounds, also sometimes CE id from bigg)
+- name = compound_names
+
+See remarks regarding the paradoxical results in the CHRIS/example rmd report.
+See here the final selected clean up of the mummichog results.
+
+
+```{r cleanup-table-unique-rowids}
+#' checks
+#' total rowids (inlc duplic)
+nrow(userInput_to_EmpiricalCompounds)
+#' nr of non-duplic
+length(userInput_to_EmpiricalCompounds$input_row[!duplicated(as.list(userInput_to_EmpiricalCompounds$input_row))])
+#' nr of duplic
+length(unique(userInput_to_EmpiricalCompounds$input_row[duplicated(as.list(userInput_to_EmpiricalCompounds$input_row))]))
+#' needed length if correct merged == unique
+length(unique(as.list(userInput_to_EmpiricalCompounds$input_row)))
+#' nr of exactly 1 time occur in df
+length(subset(userInput_to_EmpiricalCompounds$input_row, !(duplicated(userInput_to_EmpiricalCompounds$input_row) | duplicated(userInput_to_EmpiricalCompounds$input_row, fromLast = TRUE))))
+
+
+#' names of the replicate rowids to be merged
+doubles <- userInput_to_EmpiricalCompounds$input_row[duplicated(as.list(userInput_to_EmpiricalCompounds$input_row))] #double hits, to merge into 1 rowid
+doubles <- unique(doubles)
+
+#' loop to make subdf with solved doubles
+df_all <- NULL
+i <- 1
+for(i in 1:length(doubles)){
+    #print(doubles[i])
+        
+    double_df <- userInput_to_EmpiricalCompounds[userInput_to_EmpiricalCompounds$input_row == doubles[i], ]
+
+    #' add to empty df
+    df <- NULL
+    df$input_row <- double_df$input_row[1]
+    df$EID <- paste(c(unlist(double_df$EID)),collapse = ';')
+    df$str_row_ion <- paste(c(unlist(double_df$str_row_ion)),collapse = ';')
+    df$compounds <- paste(c(unlist(double_df$compounds)),collapse = ';')
+    df$compound_names  <- paste(c(unlist(double_df$compound_names)),collapse = ';')
+    df$input_row.1 <- double_df$input_row[1]
+    df$m.z  <- paste(c(unlist(double_df$m.z)),collapse = ';')
+    df$retention_time  <- paste(c(unlist(double_df$retention_time)),collapse = ';')
+    df$p_value  <- paste(c(unlist(double_df$p_value)),collapse = ';')
+    df$statistic  <- paste(c(unlist(double_df$statistic)),collapse = ';')
+    df$CompoundID_from_user <- paste(c(unlist(double_df$CompoundID_from_user)),collapse = ';')
+    df <- as.data.frame(df)
+
+    df_all <- rbind(df_all, df)
+}
+
+#' checks
+dim(df_all)
+df_all[, 1:3]
+colnames(df_all)
+length(unique(as.list(df_all$input_row)))
+
+#' subset original mummichog results table with rowid nr exactly 1 time occur in df
+df_unique <- subset(userInput_to_EmpiricalCompounds, !(duplicated(userInput_to_EmpiricalCompounds$input_row) | duplicated(userInput_to_EmpiricalCompounds$input_row, fromLast = TRUE)))
+dim(df_unique)
+colnames(df_unique)
+
+#' merge the non-duplic and the solved into 1 df again
+clean_df <- rbind(df_unique, df_all)
+clean_df <- clean_df[order(clean_df$input_row),]
+dim(clean_df)
+rownames(clean_df) <- clean_df$input_row
+
+#' write for testing
+handle <- file.path(DATA_PATH, 'cleanup_mummichog_output.txt')
+write.table(clean_df, file=handle, sep ="\t", row.names = FALSE, col.names = TRUE)
+
+#fyi, top metab from lm FT01399 == glutamate according to mummichog
+
+```
+
+todo!!!! see in clean df still some rowIDs merged in the untargeted metab df!!!
+
+
+The computational 'EmpiricalCompound' and other information for a tentative
+metabolite is now linked to the feature ID from the untargeted metabolomics
+dataset. The candidate metabolite can group multiple ions, and be any of the
+isobaric/isomeric species. See the original Mummichog 'results.html' for the
+visualisation and for the EmpiricalCompounds prioritized by
+pathway/module analysis.  
+
+TODO: how add these to umetab dataset? using summExp object add description
+maybe? FINDME!!! (todo after lcms semi quant untarg added, see there how).
+
+
+# Subset the significant metabolites from the lm, if contain annotation
+
+The input data is loaded in the `lm_output_results_metab` object. After 
+subsetting to keep only the significant untargeted metabolites, There are 8 
+significantly associated metabolites for control vs. grade 3 steatosis.
+
+the significant metabolites are then retrieved in the cleaned up table with
+putative annotations is in the `clean_df` object.
+
+```{r}
+#subset lm output with only the significant
+#dim(lm_output_results_metab)
+#colnames(lm_output_results_metab)
+lm_signif <- lm_output_results_metab[lm_output_results_metab[, paste0('significant_', TARGET_LMNAME)], ]  
+print('nr of significant metabolites:')
+dim(lm_signif)
+print('significant metabolites from lm, both annotated and not-annotated:')
+lm_signif$AID
+
+#keep only the annotated by subsetting clean_df
+lm_signif_with_annotation <- clean_df[clean_df$CompoundID_from_user %in% lm_signif$AID, ]
+#head(lm_signif_with_annotation)
+print('putative annotated significant metabolites:')
+lm_signif_with_annotation$compound_names
+
+#all info together of significant:
+lm_signif_with_annotation
+
+```
+
+
+resuts pasted, which are found from 8 signif (steatosis explore: control vs 
+grade 3) that also have a putative ID:
+
+[1] Top 4 = **FT01935** = "**N-Acetylmethionine**"       
+row1935	E606	row1935_M+Na[1+] C02712	N-Acetylmethionine
+check: 214.1 m/z == 191.25 g/mol + 23 Da
+check: 207 rtmed != 161 seconds methionine_13C_15N (approx)
+coef = DOWN                                                                                            
+
+[2] Top1 = **FT00689** = "5-Oxoproline$L-1-Pyrroline-3-hydroxy-5-carboxylate$**1-Pyrroline-4-hydroxy-2-carboxylate**", 
+the exact molecule is dependent on the adduct:  
+According to HTML mumm table: 
+row689  E171  row1019_M+Na[1+];row1695_M+HCOONa[1+];row673_M+H[1+];row674_M+H[1+];row688_M(C13)+H[1+];**row689_M(C13)+H[1+]**.  C01879;C04281;C04282  5-Oxoproline$L-1-Pyrroline-3-hydroxy-5-carboxylate$**1-Pyrroline-4-hydroxy-2-carboxylate** 
+check: 131.1 m/z == 129.11 g/mol of 1-Pyrroline-4-hydroxy-2-carboxylate + 2 Da M(C13)+H[1+]
+check: 169.4 rtmed == similar to proline at 167 sec (by Mar).
+coef = UP
+
+[3] Top 5 = **FT00688** = "5-Oxoproline$L-1-Pyrroline-3-hydroxy-5-carboxylate$**1-Pyrroline-4-hydroxy-2-carboxylate**"  
+row688	E171	row1019_M+Na[1+];row1695_M+HCOONa[1+];row673_M+H[1+];row674_M+H[1+];**row688_M(C13)+H[1+]**;row689_M(C13)+H[1+]	C01879;C04281;C04282	5-Oxoproline$L-1-Pyrroline-3-hydroxy-5-carboxylate$**1-Pyrroline-4-hydroxy-2-carboxylate**
+check: FT00688 is 131.1 m/z == 129.11 g/mol of 1-Pyrroline-4-hydroxy-2-carboxylate + 2 Da M(C13)+H[1+]
+check: 175.8 rtmed != similar to proline at 167 sec (by Mar).
+coef = DOWN
+!! note: feature same m/z Top1 but reverse coef. other rt, so other ID. also not
+the isomer -5-. no way of knowing ID...                            
+
+[4] Top 6 = **FT00949** = "D-Glutamate; D-Glutamic acid; D-Glutaminic acid; D-2-Aminoglutaric acid$L-Glutamate$**L-4-Hydroxyglutamate semialdehyde (best match, C12)**"
+row949	E14	**row949_M+H[1+]**;row968_M(C13)+H[1+]	C00217;C00025;C05938	**D-Glutamate**; D-Glutamic acid; D-Glutaminic acid; D-2-Aminoglutaric acid$L-Glutamate$L-4-Hydroxyglutamate semialdehyde
+check: 148.1 m/z != 146.12 g/mol Glutamate + 1 Da M+H[1+]
+check: 148.1 m/z == 147.13 g/mol L-4-Hydroxyglutamate semialdehyde g/mol + 1 Da M+H[1+]
+maybe better to double check in lc-msms data the RT of glutamate - By Mar: 171 sec.
+check: 169.3 rtmed == 171 seconds glutamic_13C_15N expected approx. but L-4-Hydroxyglutamate semialdehyde very sim rt expected if looking at structure.
+FOR OWN EXPERIENCE, this feature is probably the **C12 of L-4-Hydroxyglutamate semialdehyde**
+coef = UP
+
+[5] Top 7 = **FT00968** = "D-Glutamate; D-Glutamic acid; D-Glutaminic acid; D-2-Aminoglutaric acid$L-Glutamate$**L-4-Hydroxyglutamate semialdehyde (C13)**"
+row968	E14	row949_M+H[1+];**row968_M(C13)+H[1+]**	C00217;C00025;C05938	D-Glutamate; D-Glutamic acid; D-Glutaminic acid; D-2-Aminoglutaric acid$L-Glutamate$**L-4-Hydroxyglutamate semialdehyde**
+check: 149.1 m/z == 147.13 g/mol L-4-Hydroxyglutamate semialdehyde + 2 Da M(C13)+H[1+]
+check: 169.3 rtmed == 171 seconds glutamic_13C_15N expected approx.
+coef = UP
+
+
+
+
+
+# Acknowlegments
+
+- ref mummichig
+
+
+# Session information
+
+```{r}
+sessionInfo()
+
+```
