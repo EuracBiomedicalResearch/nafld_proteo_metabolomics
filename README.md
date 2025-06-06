@@ -15,10 +15,10 @@ NAFLD (MASLD) data resources.
 
 ## Association analyses
 
-Association analyses were already performed, but need to be re-performed with
-the proper phenotypes defines in the *General data analysis*.
-- Linear models of the NAFLD/MASLD targeted metabolomics data set 
-  [NAFLD_metab_targeted_lm.Rmd](NAFLD_metab_targeted_lm.Rmd).
+- Association analysis for liver steatosis:
+  [NAFLD_steatosis_associations.Rmd](NAFLD_steatosis_associations.Rmd). This is
+  the current **main** analysis.
+
 
 ## Required packages and setup
 
@@ -64,9 +64,9 @@ install.packages(c("tidyverse",
                    "plotly",
                    "rgl",
                    "writexl"))
-                   
-remotes::install_github("EuracBiomedicalResearch/tidyfr")                   
 
-                 
-                 
+remotes::install_github("EuracBiomedicalResearch/tidyfr")
+
+
+
 ```
