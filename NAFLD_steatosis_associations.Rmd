@@ -95,7 +95,7 @@ dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
 DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
-DATA_PATH <- "."
+#DATA_PATH <- "."
 
 
 DATASET <- 'CHRIS-NAFLD, none and MASLD'
@@ -392,9 +392,6 @@ remove these unreliable measurements.
 
 ```{r load-liver-param2}
 #' remove samples with  naab12 (liver stiffness IQR) > 30
-#' DISCUSS: should we remove the participants or just remove the measurement
-#' for these - assuming the other values are OK-ish (because quantified with) a
-#' different technology?
 gal_met_prot_data$liver_stiffness[
                       which(gal_met_prot_data$liver_stiffnes_iqr > 30)] <- NA
 ```
@@ -423,12 +420,11 @@ has_na <- lapply(gal_met_prot_data[, no_na_var, drop = FALSE], is.na) |>
 gal_met_prot_data <- gal_met_prot_data[rowSums(has_na) == 0, , drop = FALSE]
 ```
 
-Remove outlier values. **CURRENTLY NOT DONE** DISCUSS:
+Remove fibrosis outlier values: **CURRENTLY NOT DONE**.
 Previous outlier removal removed a participant with a FIB4 score of 7.8. This
-participant was removed with the call above. The second outlier removal excluded
-a participant with a liver_stiffness value of 34. This participant is still
-present, but steatosis is not the phenotype of interest anymore. Thus, keeping
-the participant for now and removing if he/she negatively affects the analysis.
+participant was originally removed. The second outlier removal excluded
+a participant with a liver_stiffness value of 34. Both participants are still
+present, as fibrosis is not the phenotype of interest anymore.
 
 We next define the categorical variables from numeric measurements:
 
@@ -521,9 +517,9 @@ summary(gal_met_prot_data[, c("Age", "Sex", "T2D", "MASLD", "FIB4", "BMI",
                               "visc_subcut_fat")])
 ```
 
-DISCUSS:
-- remove participants with NA in BMI?
-- remove extreme case for liver stiffness?
+The variables that are not allowed to conatin NAs are: sex, age and liver_fat.
+Participants with NA in BMI, and those 2 with extreme liver stiffness/FIB4
+scores are not removed.
 
 
 # Output for the paper
@@ -872,10 +868,7 @@ differences in dietary habits between the liver fat categories.
 
 TODO: get feedback from Essi on this
 
-DISCUSS: this is linear models, not logistic. food items are ordinal - should we
-use `glm` / ordinal regression instead?
-
-logistic models setup:
+linear models setup:
 
 ```{r define-lm-covariates-and-target-diet}
 print('covariates of the linear regression model:')
@@ -949,9 +942,6 @@ lm_output <- cbind(lm_output, adjp)
 
 Next we calculate the effect sizes.
 
-DISCUSS: not sure if we can calculate effect sizes for categorical/ordinal
-values?
-
 To obtain comparable coefficients, prior to linear modelling all the ffq_items
 are standardized to zero mean and unit variance (note that this does not
 influence the linear models since they are affine equivariant). In such
@@ -974,8 +964,8 @@ colnames(es) <- sub("coef", "effectSize", colnames(es))
 lm_output <- cbind(lm_output, es)
 ```
 
-DISCUSS: can not have cv-based cut-off. Would maybe "just" use the statistical
-significance criteria (just the adjusted p-value).
+For diet, we can not have cv-based cut-off, therefore, we use "just" the
+statistical significance criteria (just the adjusted p-value).
 
 ```{r define significance criteria-diet}
 #' define the different coefficients as comparisons
@@ -1104,20 +1094,19 @@ pheatmap(es_results, display_numbers = es_results_sig,
 A considerable number of ffq_items are significant both for sex and age,
 in many cases even with the same sign.
 
-DISCUSS: interesting/strange that there are food items with relatively large
-coefficient, but not significant.
 
 ### Summary
 
 - Strong age and sex differences.
 - No food item is significantly different between the steatosis categories.
+- There are food items with relatively large coefficient, but not significant.
 
 
 ## Association between circulating proteins and liver fat (steatosis)
 
 Model setup:
 
-```{r define-glm-covariates-and-target}
+```{r define-lm--covariates-and-target}
 print('covariates of the linear regression model:')
 COVARIATES <- c("Sex", "Age_10")
 print(COVARIATES)
@@ -1146,7 +1135,7 @@ response variable with sex, age and the (categorical) steatosis as a covariates.
 Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
 
-```{r logistic-model}
+```{r linear-model-prot}
 #' Fit linear models and extract coefficients and p-values on each protein
 lm_output <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data) |>
     do.call(what = rbind)
@@ -1168,7 +1157,7 @@ autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
 parameter will be called "effect size" and will be use to evaluate group
 differences.
 
-```{r glm-effectsize, message=FALSE}
+```{r lm--effectsize, message=FALSE}
 #' Perform autoscaling for effect size (es) calculation
 gal_met_prot_data_scaled <- gal_met_prot_data
 gal_met_prot_data_scaled[, proteins] <- gal_met_prot_data[, proteins] |>
@@ -1194,7 +1183,7 @@ we prioritize proteins with a larger difference between the observed
 Below we add thus evaluate for each protein and comparison whether it
 fulfills that criteria.
 
-```{r glm-define significance criteria}
+```{r lm--define significance criteria}
 #' define the different coefficients as comparisons
 comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
 
@@ -1236,7 +1225,7 @@ comparison, the number of proteins complying to either the adjusted p value
 or either the CV-value, as single threshold criteria, are calculated and
 summarized here as well.
 
-```{r glm-table-sig, results = "asis"}
+```{r lm--table-sig, results = "asis"}
 #' merge to p-adj to cv significance summary
 sig_tab <- data.frame(
     `p_adj < 0.05` = colSums(sign_p),
@@ -1257,7 +1246,7 @@ pandoc.table(
 
 Export results for inspection:
 
-```{r glm-export-results}
+```{r lm--export-results}
 results_prot <- data.frame(
     prot_ann[rownames(lm_output),
              c("description", "long_description", "PeptideNN",
@@ -1288,7 +1277,7 @@ We visualize the associations in a heatmap. The effect size are added for the
 associations, for the significant proteins (min 1 significance to
 covariate). also for the not significant associations, the effect size is shown.
 
-```{r prot-glm-heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for proteins with at least one significant association."}
+```{r prot-lm--heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for proteins with at least one significant association."}
 #' Extract effect sizes
 es_results <- results_prot[, grep("effectSize_", colnames(results_prot))] |>
     as.matrix()
@@ -1342,7 +1331,7 @@ plt
 In second plot, only the significant effect size labels were added to the
 heat map. also, the dendograms after hierarchical clustering are shown.
 
-```{r prot-glm-heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+```{r prot-lm--heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
 #' keep just the effect sizes of the significant associations
 es_results_sig <- es_results
 es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
@@ -1422,7 +1411,7 @@ steatosis grade 2 and 3 participants.
 Proteins with significant different abundance for at least one steatosis grade
 class are shown below.
 
-```{r glm-table-sig-sex, results = "asis", echo = FALSE}
+```{r lm--table-sig-sex, results = "asis", echo = FALSE}
 tmp <- results_prot[sigs, c("Genes",
                        "coef_SexMale", "p.adj_SexMale",
                        "coef_Age_10", "p.adj_Age_10",
@@ -1440,7 +1429,7 @@ pandoc.table(
 Significant proteins associated with steatosis (top 5 strongest associated
 proteins) are visualized below. Points are colored according to sample sex.
 
-```{r glm-prep for plotting}
+```{r lm--prep for plotting}
 #' prep for plotting
 PLOTLY <- FALSE
 ggplotly_or_not <- function(x, interactive = TRUE) {
@@ -2506,9 +2495,10 @@ categories.
 
 We apply the same linear regression analyses as above, but with the *T2D*
 variable as additional covariate.
-Logistic models (classification) setup:
 
-```{r define-glm-covariates-and-target-t2d}
+linear models (classification) setup:
+
+```{r define-lm--covariates-and-target-t2d}
 print('covariates of the linear regression model:')
 COVARIATES <- c("Sex", "Age_10", "T2D")
 print(COVARIATES)
@@ -2527,7 +2517,7 @@ print('nr of individuals inspected:')
 print(nrow(gal_met_prot_data))
 ```
 
-```{r logistic-model-t2d}
+```{r linear-model-t2d}
 #' Fit linear models and extract coefficients and p-values on each protein
 lm_output <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data) |>
     do.call(what = rbind)
@@ -2578,7 +2568,8 @@ abline(l)
 
 We apply the same linear regression analyses as above, but with the *T2D*
 variable as additional covariate.
-Logistic models (classification) setup:
+
+linear models (classification) setup:
 
 ```{r}
 print('covariates of the linear regression model:')
