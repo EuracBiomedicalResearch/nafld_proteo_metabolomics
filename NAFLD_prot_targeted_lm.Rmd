@@ -101,9 +101,9 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
 #DATA_PATH <- '/media/mdegraeve/josung/data/NAFLD'
-#DATA_PATH <- "."
+DATA_PATH <- "."
 
 ```
 
@@ -166,15 +166,6 @@ rownames(prot_ann) <- prot_ann$description
 proteins <- rownames(prot_ann)[prot_ann$type != "categorical"]
 proteins <- rownames(prot_ann)[prot_ann$Genes != ""]
 
-#' problem in calculating lm below for
-#'   'PC aa C30:2' #NOK, only 8 col!!
-#'   'Histamine' NOK, only 8 col!!
-#' because no values for each typeSLD, due to lot NA values
-#' option 1: rm proteins, not done
-#proteins <- proteins[proteins != 'PC aa C30:2']
-#proteins <- proteins[proteins != 'Histamine']
-#' option2: retain only none and MASLD, see done later
-
 #' select proteins dataframe
 prot_data <- prot_data[, proteins]
 #head(prot_data)    #row samples, cols are protein name, matrix are absol conc
@@ -234,9 +225,9 @@ write.table(prot_data, file=handle, sep ="\t", row.names = FALSE, col.names = TR
 
 ```
 
-Because for 2 proteins, 'PC aa C30:2' and 'Histamine', only NAs are present
-for the less populated `sld_type` groups (*MetALD* end *SLD*), only *none* and
-*MASLD* types are considered further.
+Similar to the metabolomics data analysis and because of the very small sample
+sizes we restrict the analysis to the *none* and *MASLD* categories and remove
+the less populated `sld_type` groups (*MetALD* end *SLD*).
 
 ```{r keep only none and MASLD types}
 #' because problem 2 proteins only NAs in some sld types,
@@ -286,7 +277,7 @@ data$Sex_sld_type <- paste(data$sld_type, data$Sex, sep = "_")
 vioplot(data$BMI ~ data$Sex_sld_type,
         xlab = "", ylab = "BMI", main = "BMI distribution by sex and SLD type",
         method = "jitter")
-
+grid()
 ```
 
 The BMI is lower for both genders in the control (none) group compared to the
@@ -349,7 +340,7 @@ If so, we might add that variable also to the linear model below.
 vioplot(data$Age ~ data$Sex_sld_type,
         xlab = "", ylab = "Age", main = "Age distribution by sex and SLD type",
         method = "jitter")
-
+grid()
 ```
 
 No difference between age was noted between the MASLD and control (none) groups.
@@ -436,16 +427,16 @@ ggplotly_or_not(gg_1, PLOTLY)
 
 ```
 
-None of the variables BMI, age, sex, sld_type seem to affect a seperation in the 
-PCA score plots. 
+None of the variables BMI, age, sex, sld_type seem to affect a seperation in the
+PCA score plots.
 
 
 ## Conclusion covariates
 
 If you have the MAFLD phenotype, your BMI is significant (p<<0.05) higher than
-in the control group. This holds true for both female and male gender. After 
-visualizing unsupervised using PCA, no obvious clustering overlap with the 
-MASLD sld_type phenotype was observed. The same setup of covariates were 
+in the control group. This holds true for both female and male gender. After
+visualizing unsupervised using PCA, no obvious clustering overlap with the
+MASLD sld_type phenotype was observed. The same setup of covariates were
 performed as for the targeted metabolomics.
 
 
@@ -1255,6 +1246,15 @@ Consulted sources used as basis for code:
 
 - https://github.com/EuracBiomedicalResearch/chris_plasma_proteome/blob/main/sex_age_bmi_associated_proteins.Rmd
 - https://github.com/EuracBiomedicalResearch/metabo_chris_targeted_MetaboEnv/blob/main/medication_effect_atc4.Rmd
+
+
+# Notes
+
+- Some of the significantly associated proteins (SHBG, CP) are also strongly
+  associated (in other data sets) to hormonal contraceptive use. We might need
+  to adjust thus also the present dataset for this type of medication? Or at
+  least evaluate whether a difference in the numbers of participants taking HCU
+  is present between the groups.
 
 
 # Session information

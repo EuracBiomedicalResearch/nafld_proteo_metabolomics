@@ -100,9 +100,9 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
 #DATA_PATH <- '/media/mdegraeve/josung/data/NAFLD'
-#DATA_PATH <- "."
+DATA_PATH <- "."
 
 ```
 
@@ -309,7 +309,7 @@ data$Sex_sld_type <- paste(data$sld_type, data$Sex, sep = "_")
 vioplot(data$BMI ~ data$Sex_sld_type,
         xlab = "", ylab = "BMI", main = "BMI distribution by sex and SLD type",
         method = "jitter")
-
+grid()
 ```
 
 The BMI is lower for both genders in the control (none) group compared to the
@@ -372,7 +372,7 @@ If so, we might add that variable also to the linear model below.
 vioplot(data$Age ~ data$Sex_sld_type,
         xlab = "", ylab = "Age", main = "Age distribution by sex and SLD type",
         method = "jitter")
-
+grid()
 ```
 
 No difference between age was noted between the MASLD and control (none) groups.
