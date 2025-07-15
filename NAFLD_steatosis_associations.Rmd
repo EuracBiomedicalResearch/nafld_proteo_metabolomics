@@ -239,7 +239,10 @@ dim(met_data)
 Dietary information, i.e. GA2LEN food frequency questionaires, from the MASLD
 study were loaded and included in the analysis.
 
-```{r diet-data}
+DO NOT RUN next 2 chuncks, we use the newly created dietary indices from Essi
+(10/07/2025). 
+
+```{r diet-data, eval = FALSE}
 #' 1. load the metadata regarding the GA2LEN FFQs
 library(nafldData)
 #nafldTraitAnnotations()|> head()
@@ -287,9 +290,14 @@ summary(galan$naff001)
 galan[, categor_variables] <- lapply(galan[, categor_variables], encode_ordinal)
 ```
 
-Corresponding fake CV-values (no 'pool' samples) for diet.
+Corresponding fake CV-values (no 'pool' samples) for diet. Too many AIDs, but
+ok, since the filtering on included rownames is done in the lm.
 
-```{r kora-cv}
+```{r kora-cv, eval = FALSE}
+#' 1. load the metadata regarding the GA2LEN FFQs
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
 nafldAnn <- nafldTraitAnnotations()
 kora_ann <- nafldAnn[ffq_items, ]
 rownames(kora_ann) <- ffq_items
@@ -299,6 +307,39 @@ rownames(kora_ann) <- ffq_items
 cv_values <- 0
 #' save in the met_ann as column
 kora_ann$cv_qc_chris <- cv_values
+```
+
+The newly created dietary indices from Essi are saved under 
+NAFLD_dietary_indices_data_Marilyn. And note in the
+lm: "you should also correct your models for total energy intake (just have it
+as covariate in the model, nanu006a)". This was added in the section of dietary
+lms.
+
+```{r NAFLD-indices}
+#' load the NAFLD_dietary_indices_data
+handle <- file.path(DATA_PATH, 'GALAN', 'NAFLD_dietary_indices_data_Marilyn.txt')
+galan <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+
+#'galan is with , instead of decimal point so change
+comma_to_point <- function(x) {
+  x <- scan(text = x, dec = ",", sep = ".")
+  x
+}
+galan <- apply(galan, MARGIN = 2, comma_to_point) |>
+    as.data.frame()
+rownames(galan) <- paste0('00', as.character(galan$AID))
+#dim(galan)
+#colnames(galan)
+#galan$AID[1:5]
+#head(galan)
+
+#' replace the aids columns with 00 start and as a string
+galan$AID <- rownames(galan)
+
+#' varialbes
+ffq_items <- colnames(galan)[2:ncol(galan)] #excl AID col
+
 ```
 
 
@@ -336,8 +377,15 @@ we have proteomics **and** metabolomics data. This also ensures that any
 potential study drop-outs are no longer considered in the data (as their
 proteomics or metabolomics data was removed).
 
+There were less AIDs present in the dietary data, so we restrict with the data
+to participants for which we have proteomics **and** metabolomics **and** 
+dietary data. ??? TODO findme!!!
+
 ```{r merge-dfs}
-AIDs <- intersect(rownames(prot_data), rownames(met_data))
+#AIDs <- intersect(rownames(prot_data), rownames(met_data))
+AIDs1 <- intersect(rownames(prot_data), rownames(met_data))
+AIDs2 <- intersect(rownames(masld_phenotype_df), rownames(galan))
+AIDs <- intersect(AIDs1, AIDs2)
 
 #' Subset all datasets to the same IDs
 prot_data <- prot_data[AIDs, ]
@@ -524,7 +572,7 @@ scores are not removed.
 
 # Output for the paper
 
-## violin plot
+## Violin plot BMI
 
 Relationship between liver fat and BMI. The BMI distribution for the different
 liver fat categories is shown below. There is a clear relationship between the
@@ -554,6 +602,18 @@ The regression of BMI on liver fat values is highly significant:
 
 ```{r}
 summary(l)
+```
+
+## Violin plot Age
+
+Not for in the paper, but for the sentence regarding if age increases with grade
+3 steatosis
+
+```{r violin-age-vs-sex-target, fig.path = IMAGE_PATH, fig.height=8, fig.width=7, dpi = 300}
+vioplot(split(gal_met_prot_data$Age,
+              paste0(gal_met_prot_data$Sex, gal_met_prot_data$liver_fat_cat1)),
+        ylab = "Age")
+grid()
 ```
 
 
@@ -750,7 +810,7 @@ corr_info <- cbind(data_melt, data_melt_Pvalues$value)
 colnames(corr_info) <- c("CompID1", "CompID2", "Corr_coef", "adj_p_value")
 head(corr_info)
 
-write.table(corr_info, 'corr_info.txt', sep = '\t')
+write.table(corr_info, 'data/corr_info.txt', sep = '\t')
 
 ```
 
@@ -866,13 +926,28 @@ proteins with the liver fat categories.
 We perform linear regression analyses to evaluate whether there are
 differences in dietary habits between the liver fat categories.
 
-TODO: get feedback from Essi on this
+Feedback from Essi: load food indices and summarized food groups (eg pizza),
+and include the "estimated daily nutrient intake" as additional covariate.
+
+
+```{r}
+library(nafldData)
+#need this one
+#nafldAnn['nanu006a', ]   #Estimated daily nutrient intake
+
+ffq <- nafldData("FFQ")
+rownames(ffq) <- ffq$AID
+
+gal_met_prot_data$estim_daily_nutr_intake <- ffq[rownames(gal_met_prot_data), 'nanu006a']
+
+```
+
 
 linear models setup:
 
 ```{r define-lm-covariates-and-target-diet}
 print('covariates of the linear regression model:')
-COVARIATES <- c("Sex", "Age_10")
+COVARIATES <- c("Sex", "Age_10", "estim_daily_nutr_intake")
 print(COVARIATES)
 
 print('target of the linear regression model:')
@@ -1001,7 +1076,7 @@ Export results for inspection:
 
 ```{r export-results-diet}
 results_diet <- data.frame(
-    kora_ann[rownames(lm_output), c("domain", "name")],
+    #kora_ann[rownames(lm_output), c("domain", "name")],  #with indices essi, info NA
     lm_output
 )
 #' write to file for manual inspection,
@@ -1088,6 +1163,72 @@ for (i in colnames(es_results_sig)) {
 colnames(es_results_sig) <- sub("coef_", "", colnames(es_results_sig))
 pheatmap(es_results, display_numbers = es_results_sig,
          number_color = "#444444", fontsize_number = 7)
+
+```
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r diet-heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results_diet <- results_diet[, grep("coef_", colnames(results_diet))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_diet <- coef_results_diet[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_diet <- results_diet[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_diet <- coef_results_diet[rowSums(sig_results_diet) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_diet)
+
+#' hierarchical clustering
+#clust1 <- hclust(dist((coef_results_diet)), method = "ward.D")
+#clust2 <- hclust(dist(t(coef_results_diet)), method = "ward.D") #only 1 signif
+
+#' clean roundup nrs for plot
+coef_results_diet[coef_results_diet == 0] <- NA
+coef_results_diet <- round(coef_results_diet, 2)
+
+#' in long format
+coef_results_diet_long <- melt(as.matrix(coef_results_diet))
+
+#' ggplot
+plt <- coef_results_diet_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+        #expand = c(0, 0), limits = colnames(coef_results_diet)[clust2$order]) +
+    #scale_y_discrete(
+        #expand = c(0, 0), limits = rownames(coef_results_diet)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+#plt  #0 singificant
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_diet_sig <- coef_results_diet
+coef_results_diet_sig[as.matrix(sig_results_diet)[rownames(coef_results_diet), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results_diet) <- sub("Coefficient_", "", colnames(coef_results_diet))
+#pheatmap(coef_results_diet, display_numbers = es_results_diet_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
 
 ```
 
@@ -1345,6 +1486,72 @@ pheatmap(es_results, display_numbers = es_results_sig,
 
 As expected, the strongest effects are visible in the comparison between
 steatosis grade 4 and 1.
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r glm-heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_prot <- coef_results_prot[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_prot <- results_prot[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_prot <- coef_results_prot[rowSums(sig_results_prot) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_prot)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_prot)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_prot)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_prot[coef_results_prot == 0] <- NA
+coef_results_prot <- round(coef_results_prot, 2)
+
+#' in long format
+coef_results_prot_long <- melt(as.matrix(coef_results_prot))
+
+#' ggplot
+plt <- coef_results_prot_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_prot)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_prot)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_prot_sig <- coef_results_prot
+coef_results_prot_sig[as.matrix(sig_results_prot)[rownames(coef_results_prot), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results_prot) <- sub("Coefficient_", "", colnames(coef_results_prot))
+#pheatmap(coef_results_prot, display_numbers = es_results_prot_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
+```
 
 We next create volcano plots showing the results for the individual steatosis
 categories.
@@ -1749,6 +1956,72 @@ es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
 colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
 pheatmap(es_results, display_numbers = es_results_sig,
          number_color = "#444444", fontsize_number = 7)
+```
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r heatmap3, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results_met <- results_met[, grep("coef_", colnames(results_met))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_met <- coef_results_met[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_met <- results_met[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_met <- coef_results_met[rowSums(sig_results_met) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_met)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_met)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_met)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_met[coef_results_met == 0] <- NA
+coef_results_met <- round(coef_results_met, 2)
+
+#' in long format
+coef_results_met_long <- melt(as.matrix(coef_results_met))
+
+#' ggplot
+plt <- coef_results_met_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_met)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_met)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_met_sig <- coef_results_met
+coef_results_met_sig[as.matrix(sig_results_met)[rownames(coef_results_met), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results_met) <- sub("Coefficient_", "", colnames(coef_results_met))
+#pheatmap(coef_results_met, display_numbers = es_results_met_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
 ```
 
 We investigate the associations for MASLD, i.e. the difference in average
@@ -2337,8 +2610,8 @@ plan:
       https://rampdb.nih.gov/pathway-enrichment. see rampdb-test.ods
 - [x] manually curate and define the pathway clusters, also split again proteins
       and metabolites (since no overlap).
-- [ ] floorplan of coagulation and AA metabolism, make/paste in ppt.
-- [ ] add barplots of measured metab/prot with background (prot/metab) and
+- [x] floorplan of coagulation and AA metabolism, make/paste in ppt.
+- [x] add barplots of measured metab/prot with background (prot/metab) and
      control, grade S3 steatosis 2 bars, with '*' if significant (lm's).
      For now, boxplots and only of the significant ones, can change in the
      future.
