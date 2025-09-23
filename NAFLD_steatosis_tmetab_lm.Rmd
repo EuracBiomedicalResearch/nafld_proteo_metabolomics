@@ -56,7 +56,7 @@ classifications. See [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
 definition of the phenotype.
 
 This document describes the statistical analysis using multiple linear models to
-identify associations between metabolites and steatosis, whitin participant with 
+identify associations between metabolites and steatosis, whitin participant with
 metabolic dysfunction-associated
 steatotic liver disease (MASLD). The definition of control and MASLD types are:
 
@@ -80,23 +80,23 @@ The MetALD and SLD types are not included in this analysis. FYI:
 See the `nafld_data_overview 1.html` report for further
 information regarding the SLD sub-classification.
 
-Regarding steatosis, i.e. Abnormal retention of fat (lipids) within a cell or 
-organ. In this scope: liver steatosis. 
+Regarding steatosis, i.e. Abnormal retention of fat (lipids) within a cell or
+organ. In this scope: liver steatosis.
 The variables containing this parameter is:
 
-Presence of steatotic liver disease (SLD): sonographic evaluation, steatose 
+Presence of steatotic liver disease (SLD): sonographic evaluation, steatose
 score of 2 – 3.
 
-- *naab11*: liver stiffness (higher values are worse). Values for participants 
-  that have a naab12 (liver stiffness IQR) > 30 should be either removed or 
+- *naab11*: liver stiffness (higher values are worse). Values for participants
+  that have a naab12 (liver stiffness IQR) > 30 should be either removed or
   taken with care.
-- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness 
+- *naab12*: liver stiffness IQR: the IQR of repeated liver stiffness
   measurements. Values below 30 are considered OK.
 - *naab13*: liver fat. Can be binarized at an absolute value of 288.
-- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1 
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
   to 3. Values 2 and 3 can be considered steatotic.
 
-This parameter will be used as the target for a biomarker search in *MASLD* 
+This parameter will be used as the target for a biomarker search in *MASLD*
 participants.
 
 
@@ -154,7 +154,7 @@ which includes general information for each measurement.
 ```{r load_dataset, message = FALSE}
 #' load TDF using tidyfr
 #list_data_modules(path = DATA_PATH)
-p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2",
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.3",
                     path = DATA_PATH)
 met_data <- data(p180)
 met_ann <- labels(p180)
@@ -286,10 +286,10 @@ met_data$Age_10 <- met_data$Age / 10
 
 ```
 
-Add the information from the [nafld_data_overview.Rmd](nafld_data_overview.Rmd) 
-report regarding the steatosis, using the parameter naab11: liver stiffness 
-(higher values are worse). Values for participants that have a naab12 
-(liver stiffness IQR) > 30 should be either removed or taken with care. 
+Add the information from the [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
+report regarding the steatosis, using the parameter naab11: liver stiffness
+(higher values are worse). Values for participants that have a naab12
+(liver stiffness IQR) > 30 should be either removed or taken with care.
 Further called "liver_stiffness".
 
 
@@ -307,10 +307,10 @@ summary(met_data[, c("liver_stiffness", "T2D")])
 
 ```
 
-liver_stiffness is numeric, continuous ranging between 1.5 - 34.4. A higher score 
+liver_stiffness is numeric, continuous ranging between 1.5 - 34.4. A higher score
 is more liver stiffness, aka more steatosis.
-After initial run, the 1 participant with the upper value of 
-liver_stiffness = 34.4 was removed, as the median = 4.8 with the second highest 
+After initial run, the 1 participant with the upper value of
+liver_stiffness = 34.4 was removed, as the median = 4.8 with the second highest
 participant with a liver_stiffness = 18.4.
 
 ```{r subset-liver_stiffness-outlier}
@@ -331,18 +331,18 @@ Overview of variable evaluation in the data set, prior to the lm regression:
   there is a strong difference in BMI between MASLD and none control and, if so,
   if that variable also to the linear model.
 - Violin plot for age.
-- PCA of the data. 
+- PCA of the data.
 
 ## liver_stiffness distribution of data
 
-Recap from overview report. 
-"There seems to be only a small difference in average liver_stiffness values between male 
-and female participants. A strong (positive) relationship is however visible 
-between liver_stiffness and age. A slight negative relationship seems to be present between 
+Recap from overview report.
+"There seems to be only a small difference in average liver_stiffness values between male
+and female participants. A strong (positive) relationship is however visible
+between liver_stiffness and age. A slight negative relationship seems to be present between
 liver_stiffness and BMI."
 
 ```{r violin-plots, fig.height=8, fig.width=7, eval = FALSE}
-#violin sex vs liver_stiffness 
+#violin sex vs liver_stiffness
 vioplot(split(met_data$liver_stiffness,
               met_data$Sex),
         xlab = "Sex", ylab = "liver_stiffness",
@@ -358,13 +358,13 @@ vioplot(split(met_data$Age,
         xlab = "liver_stiffness_bin", ylab = "Age",
         main = "liver_stiffness_bin versus Age")
 
-#violin BMI vs liver_stiffness 
+#violin BMI vs liver_stiffness
 vioplot(split(met_data$BMI,
               met_data$liver_stiffness_bin),
         xlab = "liver_stiffness_bin", ylab = "BMI",
         main = "BMI_bin versus BMI")
 
-#violin T2D vs liver_stiffness 
+#violin T2D vs liver_stiffness
 vioplot(split(met_data$liver_stiffness,
               met_data$T2D),
         xlab = "T2D", ylab = "liver_stiffness",
@@ -926,5 +926,3 @@ R packages used for the analysis:
 ```{r}
 sessionInfo()
 ```
-
-
