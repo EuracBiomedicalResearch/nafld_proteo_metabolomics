@@ -38,7 +38,7 @@ knitr::knit_hooks$set(time_it = local({
 }))
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
-
+set.seed(1)
 ```
 
 # Introduction
@@ -198,18 +198,18 @@ met_data <- met_data[!rem, ]
 
 
 #' Impute missing values using an uniform distribution, after gap filling
-na_unidis <- function(z) {
-    na <- is.na(z)
-    if (any(na)) {
-        min = min(z, na.rm = TRUE)
-        z[na] <- runif(sum(na), min = min/2, max = min)
-    }
-    z
-}
+#na_unidis <- function(z) {
+#    na <- is.na(z)
+#    if (any(na)) {
+#        min = min(z, na.rm = TRUE)
+#        z[na] <- runif(sum(na), min = min/2, max = min)
+#    }
+#    z
+#}
 
 #' Row-wise impute missing values and add the data as a new assay
-tmp <- apply(met_data, MARGIN = 1, na_unidis)
-met_data <- t(tmp)
+#tmp <- apply(met_data, MARGIN = 1, na_unidis)
+#met_data <- t(tmp)
 ```
 
 The loaded data contains the samples as rows, and the metabolite names as
@@ -1021,7 +1021,7 @@ Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
 
 ```{r linear model-diet with CIs, message=FALSE}
-set.seed(1)
+
 #' Define a function to fit the linear model:
 #' - fit the linear model
 #' - extract the coefficients and p-values skipping the intercept
@@ -1067,7 +1067,7 @@ Add confidence intervals reorting in the LM for the not-significant dietary
 intake variables. keep R chunk above for the next lms (proteins, metabolites).
 
 ```{r lm-with-CIs-diet}
-set.seed(1)
+
 #' Define a function to fit the linear model:
 #' - fit the linear model
 #' - extract the coefficients and p-values skipping the intercept
@@ -1393,7 +1393,7 @@ Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
 
 ```{r linear-model-prot}
-set.seed(1)
+
 #' Fit linear models and extract coefficients and p-values on each protein
 lm_output <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data) |>
     do.call(what = rbind)
@@ -1502,7 +1502,7 @@ pandoc.table(
                      "the CV-based criteria in addition to the p-adj. threshold"))
 ```
 
-Export results for inspection:
+Export results for inspection, and for loading e.g. PDI influence as covariate:
 
 ```{r lm--export-results}
 results_prot <- data.frame(
@@ -1519,6 +1519,54 @@ results_prot <- data.frame(
 handle <- file.path(RDATA_PATH, 'lm_output_results_proteins.txt')
 write.table(results_prot, file=handle, sep ="\t",
             row.names = FALSE, col.names = TRUE)
+```
+
+Export for the paper SI Table S1:
+
+"Table S1. Relatively quantified Scanning SWATH proteomics data. Alternative names of the proteins and associated genes can be consulted at https://www.uniprot.org."
+
+```{r lm--export-Table-S1, warning = FALSE}
+#' write Table S1
+results <- data.frame(
+    prot_ann[rownames(lm_output),
+             c("description", "long_description", "PeptideNN",
+               "PeptideNames", "Protein.Ids", "Protein.Names",
+               "Genes", "Modified.Sequence", "Stripped.Sequence",
+               "Precursor.Id")])
+
+#' Add average concentrations for most important groups.
+dr <- paste0("data/xlsx/", filename)
+dir.create(dr, showWarnings = FALSE, recursive = TRUE)
+
+#' rename so more readable
+colnames(results) <- sub("^description$", "Uniprot ID", colnames(results))
+colnames(results) <- sub("^long_description$", "Description", colnames(results))
+colnames(results) <- sub("^Genes$", "Gene", colnames(results))
+
+write_xlsx(results, path = paste0(dr, "/SI_Table_S1.xlsx"))
+```
+
+Export for the paper SI Table S3:
+
+"Table S3. Significant proteins when comparing control (n=141, CAP<238 dB/m) versus different grades of steatosis: grade 1 (n=51, CAP>238 dB/m and CAP>260 dB/m), grade 2 (n=50, CAP>260 dB/m and CAP<290 dB/m), grade 3 steatosis (n=79, naab13>290 dB/m) using linear regression analysis with age and sex as covariates. CVQC, coefficient of variance of pooled quality control samples from the CHRIS study. Alternative nomenclature can be consulted on UniProt (https://www.uniprot.org/)."
+
+```{r lm--export-Table-S3, warning = FALSE}
+#' write Table S3
+results <- data.frame(
+    prot_ann[proteins, c("description", "Genes", "cv_qc_chris")],
+    lm_output,
+    diff_perc)
+results$cv_qc_chris <- 50 * results$cv_qc_chris
+
+#' Add average concentrations for most important groups.
+dr <- paste0("data/xlsx/", filename)
+
+#' rename so more readable
+colnames(results) <- sub("^description$", "Uniprot ID", colnames(results))
+colnames(results) <- sub("^long_description$", "Description", colnames(results))
+colnames(results) <- sub("^Genes$", "Gene", colnames(results))
+
+write_xlsx(results, path = paste0(dr, "/SI_Table_S3.xlsx"))
 ```
 
 The full results are shown below.
@@ -1869,7 +1917,7 @@ Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
 
 ```{r linear model, message=FALSE}
-set.seed(1)
+
 #' Fit linear models and extract coefficients and p-values on each protein
 lm_output <- lapply(metabolites, FUN = funForLinReg,
                     data = gal_met_prot_data) |>
@@ -1980,7 +2028,7 @@ pandoc.table(
                      "the CV-based criteria in addition to the p-adj. threshold"))
 ```
 
-Export results for inspection:
+Export results for inspection, and for loading e.g. PDI influence as covariate:
 
 ```{r export-results}
 results_met <- data.frame(
@@ -1995,6 +2043,49 @@ results_met <- data.frame(
 handle <- file.path(RDATA_PATH, 'lm_output_results_metabolites.txt')
 write.table(results_met, file=handle, sep ="\t",
             row.names = FALSE, col.names = TRUE)
+```
+
+Export for the paper SI Table S2:
+
+"Table S2. Absolutely quantified metabolites and lipids. Alternative names of the analytes can be consulted with the provider (Biocrates AbsoluteIDQ® p180 kit)."
+
+```{r lm--export-Table-S2, warning = FALSE}
+#' write Table S2
+results <- data.frame(
+    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
+                                    "biochemical_name")])
+
+#' Add average concentrations for most important groups.
+dr <- paste0("data/xlsx/", filename)
+dir.create(dr, showWarnings = FALSE, recursive = TRUE)
+
+#' rename so more readable
+colnames(results) <- sub("^analyte_name$", "Analyte name", colnames(results))
+colnames(results) <- sub("^analyte_class$", "Analyte class", colnames(results))
+colnames(results) <- sub("^biochemical_name$", "Biochemical name", colnames(results))
+
+write_xlsx(results, path = paste0(dr, "/SI_Table_S2.xlsx"))
+```
+
+
+Export for the paper SI Table S4:
+
+"Table S4. Significant metabolites and lipids when comparing control (n=141, CAP<238 dB/m) versus different grades of steatosis: grade 1 (n=51, CAP>238 dB/m and CAP>260 dB/m), grade 2 (n=50, CAP>260 dB/m and CAP<290 dB/m), grade 3 steatosis (n=79, naab13>290 dB/m) using linear regression analysis with age and sex as covariates. CVQC, coefficient of variance of pooled quality control samples from the CHRIS study. Alternative nomenclature can be consulted with the provider (Biocrates p180 kit)."
+
+```{r lm--export-Table-S4, warning = FALSE}
+#' write Table S4
+results <- data.frame(
+    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
+                                   "biochemical_name", "cv_qc_chris")],
+    lm_output,
+    diff_perc
+)
+results$cv_qc_chris <- 50 * results$cv_qc_chris
+
+#' Add average concentrations for most important groups.
+dr <- paste0("data/xlsx/", filename)
+
+write_xlsx(results, path = paste0(dr, "/SI_Table_S4.xlsx"))
 ```
 
 The full results are shown below.
@@ -2909,6 +3000,7 @@ print(nrow(gal_met_prot_data))
 ```
 
 ```{r linear-model-t2d}
+
 #' Fit linear models and extract coefficients and p-values on each protein
 lm_output <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data) |>
     do.call(what = rbind)
@@ -2982,6 +3074,7 @@ print(nrow(gal_met_prot_data))
 ```
 
 ```{r}
+
 #' Fit linear models and extract coefficients and p-values on each metabolite
 lm_output <- lapply(metabolites, FUN = funForLinReg,
                     data = gal_met_prot_data) |>
