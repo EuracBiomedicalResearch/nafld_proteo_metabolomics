@@ -94,8 +94,8 @@ RDATA_PATH <- paste0("data/RData/", filename, "/")
 dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 
 #' Path to the data
-DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
-#DATA_PATH <- "."
+#DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+DATA_PATH <- "."
 
 
 DATASET <- 'CHRIS-NAFLD, none and MASLD'
@@ -240,7 +240,7 @@ Dietary information, i.e. GA2LEN food frequency questionaires, from the MASLD
 study were loaded and included in the analysis.
 
 DO NOT RUN next 2 chuncks, we use the newly created dietary indices from Essi
-(10/07/2025). 
+(10/07/2025).
 
 ```{r diet-data, eval = FALSE}
 #' 1. load the metadata regarding the GA2LEN FFQs
@@ -309,7 +309,7 @@ cv_values <- 0
 kora_ann$cv_qc_chris <- cv_values
 ```
 
-The newly created dietary indices from Essi are saved under 
+The newly created dietary indices from Essi are saved under
 NAFLD_dietary_indices_data_Marilyn. And note in the
 lm: "you should also correct your models for total energy intake (just have it
 as covariate in the model, nanu006a)". This was added in the section of dietary
@@ -401,7 +401,7 @@ potential study drop-outs are no longer considered in the data (as their
 proteomics or metabolomics data was removed).
 
 There were less AIDs present in the dietary data, so we restrict with the data
-to participants for which we have proteomics **and** metabolomics **and** 
+to participants for which we have proteomics **and** metabolomics **and**
 dietary data. ??? TODO findme!!!
 
 ```{r merge-dfs}
@@ -1179,7 +1179,7 @@ lm_output$CI_No_0_liver_fat_cat14 <-((lm_output$CI_lower_liver_fat_cat14 > 0 & l
 
 #' nice explain:
 #' https://www.econometrics-with-r.org/5.2-cifrc.html
-#' if the interval [CI_lower, CI_upper] does not contain the value zero, this leads to the rejection of the null hypothesis β1,0=0. 
+#' if the interval [CI_lower, CI_upper] does not contain the value zero, this leads to the rejection of the null hypothesis β1,0=0.
 #' A Confidence Interval for βi
 #' Imagine you could draw all possible random samples of given size. The interval that contains the true value βi in 95%
 #' of all samples is given by the expression
@@ -2121,7 +2121,7 @@ plt <- coef_results_met_long |>
         expand = c(0, 0), limits = rownames(coef_results_met)[clust1$order]) +
     theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 5),
           axis.text.y = element_text(hjust = 1, size = 5),
-          plot.margin = margin(t = 5, l = 145, r = 145, b = 5), #top left right bottom 
+          plot.margin = margin(t = 5, l = 145, r = 145, b = 5), #top left right bottom
           legend.position = "none")
 
 ggsave(paste0(IMAGE_PATH, "metab_naab13cat1_HMcoef.png"),
