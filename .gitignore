@@ -8,8 +8,11 @@ chris_scanning*
 *.png
 *.html
 *.pdf
-images/
+images/*
 .Rhistory
 *.txt
 *.docx
-
+mummichog/*
+normalisation/*
+paper/*
+pathways/*
