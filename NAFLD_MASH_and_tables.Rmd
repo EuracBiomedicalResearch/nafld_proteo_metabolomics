@@ -1,0 +1,1204 @@
+---
+title: "Steatosis - check MASH"
+author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
+affiliation: "Eurac Research, Bolzano, Italy"
+date: "2025-02-27"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+**Modified**: `r file.info("NAFLD_MASH.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("    Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
+  }
+}))
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+
+```
+
+# Introduction
+
+During this workflow, exploratory analyis (Spearman correlations) are performed
+on the relatively quantified Scanning SWATH proteomics data (148 proteins) from
+the metabolic dysfunction-associated steatotic liver disease (MASLD)
+cohort. MASLD, previously known as NAFLD is the most chronic liver disease,
+affecting more than 30% of global population. The MAFLD cohort is a subset of
+approximatley 353 # participants from the Cooperative Health Research in South
+Tyrol (CHRIS) study, which were requested to return for a second resampling and
+additional phenotyping. The NAFLD cohort represent an unhealty group with
+various degrees of steatotic (non-alcoholic) liver disease classifications. See
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd) (respectively the rendered
+html report) for an overview of the data set and the definition of the
+phenotype.
+
+This documents describes the association analysis between circulating
+metabolites, lipids and proteins with liver steatosis.
+
+See the `nafld_data_overview 1.html` report for further
+information regarding the SLD sub-classification.
+
+Regarding steatosis, i.e. Abnormal retention of fat (lipids) within a cell or
+organ. In this scope: liver steatosis.
+The variables containing this parameter is:
+
+Presence of steatotic liver disease (SLD): sonographic evaluation, steatose
+score of 2 – 3.
+
+- *naab13*: liver fat. Can be binarized at an absolute value of 288. "liver_fat"
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
+  to 3. Values 2 and 3 can be considered steatotic. "visual_fat"
+
+This parameter will be used as the target for a biomarker search in *MASLD*
+participants.
+
+
+# Setup
+
+## Directories
+
+```{r directories, echo = FALSE}
+#' General settings
+filename <- "NAFLD_MASH"
+
+#' Path to save images to; remove if exists.
+IMAGE_PATH <- paste0("images/", filename, "/")
+dir.create(IMAGE_PATH, recursive = TRUE)
+
+#' Path to store RData files
+RDATA_PATH <- paste0("data/RData/", filename, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+
+#' Path to the data
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- "."
+
+
+DATASET <- 'CHRIS-NAFLD, none and MASLD'
+
+```
+
+## Packages
+
+```{r packages, message=FALSE}
+#' Load libraries
+library(chrisUtils)
+library(chrisData)
+library(DT)
+library(ggfortify)
+library(ggplot2)
+library(pander)
+library(pheatmap)
+library(plotly)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
+library(tidyfr)
+library(vioplot)
+library(writexl)
+
+```
+
+
+# Data import
+
+## Circulating proteins (tprot) dataset (Scanning SWATH)
+
+The data from proteins was converted into the TDF format and can hence be
+loaded and imported using the `tidyfr` R package. Now we read the full data
+which includes general information for each measurement.
+
+```{r load_prot_dataset, message = FALSE}
+#' load TDF using tidyfr
+#list_data_modules(path = DATA_PATH)
+md1 <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.3",
+                   path = DATA_PATH)
+prot_data <- data(md1)
+prot_ann <- labels(md1)
+stopifnot(all(colnames(prot_data) == rownames(prot_ann)))
+colnames(prot_data) <- prot_ann$description
+rownames(prot_ann) <- prot_ann$description
+
+#' define the columns with protein concentrations
+proteins <- rownames(prot_ann)[prot_ann$type != "categorical"]
+proteins <- rownames(prot_ann)[prot_ann$Genes != ""]
+
+#' select proteins dataframe
+prot_data <- prot_data[, proteins]
+
+```
+
+The loaded data contains the samples as rows, and the protein names as
+colums. The measurements of the `prot_data` object are the relative
+concentrations of protein per sample. No data transformation is performed as the
+abundances are already reported in log2 scale, a normal distribution of the
+proteomics is assumed.
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study. The number of samples and proteins
+are:
+
+```{r subset to NAFLD set, message = FALSE, warning = FALSE}
+prot_data <- prot_data[grep("^008", rownames(prot_data)), ]
+dim(prot_data)
+```
+
+
+## Targeted metabolomics (tmetab) dataset (Biocrates p180 kit)
+
+The data from metabolites was converted into the TDF format and can hence be
+loaded and imported using the `tidyfr` R package. Now we read the full data
+which includes general information for each measurement.
+
+```{r load_tmetb_dataset, message = FALSE}
+#' load TDF using tidyfr
+#list_data_modules(path = DATA_PATH)
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.3",
+                    path = DATA_PATH)
+met_data <- data(p180)
+met_ann <- labels(p180)
+stopifnot(all(colnames(met_data) == rownames(met_ann)))
+colnames(met_data) <- met_ann$description
+rownames(met_ann) <- met_ann$description
+
+#' define the columns with metabolite concentrations
+metabolites <- rownames(met_ann)[met_ann$type != "categorical"]
+
+#' select metabolites dataframe
+met_data <- met_data[, metabolites]
+#' Remove the individuals with more than 80% missing values
+rem <- apply(met_data, MARGIN = 1, function(z) {
+    sum(is.na(z)) > length(z) * 0.8
+})
+met_data <- met_data[!rem, ]
+
+
+#' Impute missing values using an uniform distribution, after gap filling
+na_unidis <- function(z) {
+    na <- is.na(z)
+    if (any(na)) {
+        min = min(z, na.rm = TRUE)
+        z[na] <- runif(sum(na), min = min/2, max = min)
+    }
+    z
+}
+
+#' Row-wise impute missing values and add the data as a new assay
+tmp <- apply(met_data, MARGIN = 1, na_unidis)
+met_data <- t(tmp)
+```
+
+The loaded data contains the samples as rows, and the metabolite names as
+colums. The measurements of the `met_data` object are the absolute
+concentrations of metabolite per sample, in natural scale.
+
+To ensure a normal distribution of the metabololits, we perform log2
+transformation.
+
+```{r m log2-transformation, message = FALSE}
+#' log2 scaling of absolute abundances metabolites
+met_data <- log2(met_data)
+```
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study. The number of samples and
+metabolites are listed below.
+
+```{r m subset to NAFLD set, message = FALSE, warning = FALSE}
+met_data <- met_data[grep("^008", rownames(met_data)), ]
+dim(met_data)
+```
+
+
+## Diet GA2LEN data
+
+Dietary information, i.e. GA2LEN food frequency questionaires, from the MASLD
+study were loaded and included in the analysis.
+
+DO NOT RUN next 2 chuncks, we use the newly created dietary indices from Essi
+(10/07/2025). 
+
+```{r diet-data, eval = FALSE}
+#' 1. load the metadata regarding the GA2LEN FFQs
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+galan <- nafldData("FFQ")
+rownames(galan) <- galan$AID
+
+#variables, subset:
+#naff001 - naff229 are galan FFQ, and the rest = not!
+
+galan <- galan[, 1:230] #incl AID
+ffq_items <- colnames(galan)[2:230]
+
+#' change to numerical scores instead of FFQ answers
+#' solve using category encoder, in R see:
+#' https://www.r-bloggers.com/2020/02/a-guide-to-encoding-categorical-features-using-r/
+
+#' select categor variables
+categor_variables <- NULL
+for (x in ffq_items){
+  if (class(galan[[x]]) == 'factor' | class(galan[[x]]) == 'character'){  #factor and character
+    categor_variables <- c(categor_variables, x)
+  }
+}
+
+#' using ordinal encoding on categorical vars
+encode_ordinal <- function(x) {
+  if (is.factor(x)) {
+    order <- levels(x)   #retain defined factor level order, wo NA but next step ignored so fine
+    x <- as.numeric(factor(x, levels = order, exclude = NA)) #as numeric, keep NA in dataset
+  } else if (is.character(x)) {
+    print(x) #*
+  }
+  x
+}
+
+#* text info: NOT
+    #naff246 - naff249b
+    #naff260 - naff263a
+
+#' testing
+summary(galan$naff001)
+
+#' apply encoding on categor vars
+galan[, categor_variables] <- lapply(galan[, categor_variables], encode_ordinal)
+```
+
+Corresponding fake CV-values (no 'pool' samples) for diet.
+
+```{r kora-cv, eval = FALSE}
+#' 1. load the metadata regarding the GA2LEN FFQs
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+nafldAnn <- nafldTraitAnnotations()
+kora_ann <- nafldAnn[ffq_items, ]
+rownames(kora_ann) <- ffq_items
+#head(kora_ann)
+
+#' TEMP, just accept all features now as having good cv
+cv_values <- 0
+#' save in the met_ann as column
+kora_ann$cv_qc_chris <- cv_values
+```
+
+The newly created dietary indices from Essi are saved under 
+NAFLD_dietary_indices_data_Marilyn. And note in the
+lm: "you should also correct your models for total energy intake (just have it
+as covariate in the model, nanu006a)". TODO!!!
+
+```{r NAFLD-indices}
+#' load the NAFLD_dietary_indices_data
+handle <- file.path(DATA_PATH, 'GALAN', 'NAFLD_dietary_indices_data_Marilyn.txt')
+galan <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+
+#'galan is with , instead of decimal point so change
+comma_to_point <- function(x) {
+  x <- scan(text = x, dec = ",", sep = ".")
+  x
+}
+galan <- apply(galan, MARGIN = 2, comma_to_point) |>
+    as.data.frame()
+rownames(galan) <- paste0('00', as.character(galan$AID))
+#dim(galan)
+#colnames(galan)
+#galan$AID[1:5]
+#head(galan)
+
+#replace the aids columns with 00 start and as a string
+galan$AID <- rownames(galan)
+
+```
+
+Also add the 4 macros and add to the `ffq_items`.
+
+```{r NAFLD_food_macros}
+library(nafldData)
+#need these one
+#nanu003 (protein), nanu004 (total fat), nanu005 (total carbs), nanu019b (saturated fatty acids), nanu023b (monounsaturated fatty acids), nanu025b (polyunsaturated fatty acids), nanu028b (trans fatty acids)
+
+ffq <- nafldData("FFQ")
+rownames(ffq) <- ffq$AID
+
+galan$protein <- ffq[rownames(galan), 'nanu003']
+galan$total_fat <- ffq[rownames(galan), 'nanu004']
+galan$total_carbs <- ffq[rownames(galan), 'nanu005']
+galan$saturated_fatty_acids <- ffq[rownames(galan), 'nanu019b']
+galan$monounsaturated_fatty_acids <- ffq[rownames(galan), 'nanu023b']
+galan$polyunsaturated_fatty_acids <- ffq[rownames(galan), 'nanu025b']
+galan$trans_fatty_acids <- ffq[rownames(galan), 'nanu028b']
+
+#' variables
+ffq_items <- colnames(galan)[2:ncol(galan)] #excl AID col
+
+```
+
+## Metadata (excel)
+
+All available trait (phenotype) data was defined in the
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd), is loaded below and merged
+with the log2 transformed proteomics data of the NAFLD cohort.
+
+```{r add phenotype dataa}
+#' load xlsx file instead of below
+handle <- 'masld_phenotypes.xlsx'
+masld_phenotype_df <- read_excel(file.path(DATA_PATH, handle)) |>
+    as.data.frame()
+rownames(masld_phenotype_df) <- masld_phenotype_df$AID
+#head(masld_phenotype_df, 5)
+metadata <- colnames(masld_phenotype_df)[3:ncol(masld_phenotype_df)] #info wo AIDs
+#dim(masld_phenotype_df)
+
+#' make sure sld_type is a factor with group 'none' as the baseline
+masld_phenotype_df$sld_type <- factor(masld_phenotype_df$sld_type,
+                                      levels = c('none', 'MASLD',
+                                                 'MetALD', 'SLD'))
+print('the sld types are:')
+levels(masld_phenotype_df$sld_type)
+print('nr of samples per sld types:')
+table(masld_phenotype_df$sld_type)
+```
+
+
+# Merge tmetab, tprot, kora and metadata
+
+Merging all data tables. Note that restrict the data to participants for which
+we have proteomics **and** metabolomics data. This also ensures that any
+potential study drop-outs are no longer considered in the data (as their
+proteomics or metabolomics data was removed).
+
+There were less AIDs present in the dietary data, so we restrict with the data
+to participants for which we have proteomics **and** metabolomics **and** 
+dietary data. ??? TODO findme!!!
+
+```{r merge-dfs}
+#' keep only AIDs of overlapping
+AIDs1 <- intersect(rownames(prot_data), rownames(met_data))
+AIDs2 <- intersect(rownames(masld_phenotype_df), rownames(galan))
+AIDs <- intersect(AIDs1, AIDs2)
+
+#' Subset all datasets to the same IDs
+prot_data <- prot_data[AIDs, ]
+met_data <- met_data[AIDs, ]
+masld_phenotype_df <- masld_phenotype_df[AIDs, ]
+galan <- galan[AIDs, ]
+
+#' merge with proteomics data
+prot_data$AID <- rownames(prot_data)
+prot_data <- merge(prot_data, masld_phenotype_df, by = 'AID')
+
+#' merge all sets
+met_data <- as.data.frame(met_data)
+met_data$AID <- rownames(met_data)
+met_prot_data <- merge(prot_data, met_data, by = 'AID')
+
+#' merge with metabolomics data only
+met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
+
+#' merge all sets, kora too
+met_prot_data <- as.data.frame(met_prot_data)
+rownames(met_prot_data) <- met_prot_data$AID
+gal_met_prot_data <- merge(met_prot_data, galan, by = 'AID') #kora has only 001 AIDs
+rownames(gal_met_prot_data) <- gal_met_prot_data$AID
+#gal_met_prot_data[1:5, 1:5]
+
+#' write to file for manuel inspection
+handle <- 'data/gal_met_prot_data.txt'
+write.table(gal_met_prot_data, file = handle, sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+```
+
+All data sets are subset to `r length(AIDs)` study participants.
+
+
+# Clean data and restrict to relevant participants
+
+The data is further processed and cleaned to remove unreliable
+measurements. Subsequently the data is restricted to relevant participants. We
+thus next:
+
+- remove unreliable liver fat measurements
+- exclude participants with MetALD and SLD to ensure a more homogeneous data set
+- remove participants with missing values in relevant variables
+- define variables and phenotype(s) for the analysis
+
+Add the information from the [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
+report regarding the steatosis, using the parameter naab11
+(higher values are worse). Values for participants that have a naab12
+(liver stiffness IQR) > 30 should be either removed or taken with care. Below we
+remove these unreliable measurements.
+
+```{r load-liver-param2}
+#' remove samples with  naab12 (liver stiffness IQR) > 30
+gal_met_prot_data$liver_stiffness[
+                      which(gal_met_prot_data$liver_stiffnes_iqr > 30)] <- NA
+```
+
+We next remove the MetALD and SLD participants.
+
+```{r keep only none and MASLD types}
+#' because problem 2 proteins only NAs in some sld types,
+#' keep only none and MASLD
+gal_met_prot_data <- gal_met_prot_data[gal_met_prot_data$sld_type %in%
+                                       c('none', 'MASLD'), ] #
+gal_met_prot_data$sld_type <- droplevels(gal_met_prot_data$sld_type)
+gal_met_prot_data$sld_type <- factor(gal_met_prot_data$sld_type)
+```
+
+We next remove participants with missing values for relevant variables:
+- liver fat measurement
+
+```{r}
+#' Define variables for which we don't allow missing values
+no_na_var <- c("liver_fat")
+has_na <- lapply(gal_met_prot_data[, no_na_var, drop = FALSE], is.na) |>
+    do.call(what = cbind)
+#' Remove rows (participants) with a missing value in any of the above
+#' variables
+gal_met_prot_data <- gal_met_prot_data[rowSums(has_na) == 0, , drop = FALSE]
+```
+
+Remove fibrosis outlier values: **CURRENTLY NOT DONE**.
+Previous outlier removal removed a participant with a FIB4 score of 7.8. This
+participant was originally removed. The second outlier removal excluded
+a participant with a liver_stiffness value of 34. Both participants are still
+present, as fibrosis is not the phenotype of interest anymore.
+
+We next define the categorical variables from numeric measurements:
+
+Add a categoric liver_stiffness category too, using both the definition of
+Christoph (7, 15 cutoffs) and in literature (7, 12.5 kPa cutoffs).
+
+```{r liver-stiffness-category}
+#' naab11 according to Christoph
+gal_met_prot_data$liver_stiffness_cat1 <- 2
+gal_met_prot_data$liver_stiffness_cat1[
+                      is.na(gal_met_prot_data$liver_stiffness)] <- NA
+gal_met_prot_data$liver_stiffness_cat1[
+                      which(gal_met_prot_data$liver_stiffness < 7)] <- 1
+gal_met_prot_data$liver_stiffness_cat1[
+                      which(gal_met_prot_data$liver_stiffness > 15)] <- 3
+gal_met_prot_data$liver_stiffness_cat1 <-
+    factor(gal_met_prot_data$liver_stiffness_cat1)
+
+#' naab11 according to literature
+gal_met_prot_data$liver_stiffness_cat2 <- 2
+gal_met_prot_data$liver_stiffness_cat2[
+                      is.na(gal_met_prot_data$liver_stiffness)] <- NA
+gal_met_prot_data$liver_stiffness_cat2[
+                      which(gal_met_prot_data$liver_stiffness < 7)] <- 1     #mild or absent fibrosis
+gal_met_prot_data$liver_stiffness_cat2[
+                      which(gal_met_prot_data$liver_stiffness > 12.5)] <- 3  #cirrhosis
+gal_met_prot_data$liver_stiffness_cat2 <-
+    factor(gal_met_prot_data$liver_stiffness_cat2)
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+```
+
+Add a categoric liver_fat (i.e. steatosis) category, using the following
+cutoffs:
+
+- "normal": A score below 238 dB/m means the amount of fatty change in your
+  liver is not higher than normal.
+- grade steatosis S1: 238 to 260 dB/m
+- grade steatosis S2: 260 to 290 dB/m
+- grade steatosis S3: 290 to 400 dB/m
+
+Depending on the distribution, look only at the extreme normal - steatosis.
+
+```{r liver-fat-category}
+#' naab13 make 4 groups
+gal_met_prot_data$liver_fat_cat1 <- NA
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat < 238)] <- 1 #normal
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat >= 238)] <- 2
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat > 260)] <- 3
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat > 290)] <- 4
+gal_met_prot_data$liver_fat_cat1 <- factor(gal_met_prot_data$liver_fat_cat1)
+
+#' naab13 make 2 groups
+gal_met_prot_data$liver_fat_cat2 <- NA
+gal_met_prot_data$liver_fat_cat2[which(gal_met_prot_data$liver_fat < 238)] <- 1 #normal
+gal_met_prot_data$liver_fat_cat2[which(gal_met_prot_data$liver_fat > 290)] <- 2  #steatosis, high S3
+
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+```
+
+At last we ensure categorical variables are encoded as a factor. Also, we create
+additional variable for age per 10y, because coefficients and effect sizes
+correspond to one year difference, and the anual difference is
+neglectible. Dividing age with 10, difference in coefficents and effect sizes
+would correspond to 10 years difference and it would be easier to define
+meaningful cut-off. Finally, we add a visc_subcut_fat variable on the dataset,
+comprising the ratio of visceral to subcutaneous fat thickness.
+
+
+```{r define-age10-variable, message = FALSE}
+#' Convert categorical variables to factors
+col_cat <- c("case", "self_DM", "med_DM", "fasting", "no_drinking",
+             "med_BP", "med_lip", "med_MS", "T2D", "Sex", "MASLD")
+for (i in col_cat)
+    gal_met_prot_data[, i] <- as.factor(gal_met_prot_data[, i])
+
+#' define age per 10y group
+gal_met_prot_data$Age_10 <- gal_met_prot_data$Age / 10
+gal_met_prot_data$visc_subcut_fat <- gal_met_prot_data$visc_fat /
+    gal_met_prot_data$body_fat
+```
+
+
+## Summary of the final data set
+
+```{r}
+summary(gal_met_prot_data[, c("Age", "Sex", "T2D", "MASLD", "FIB4", "BMI",
+                              "liver_stiffness", "liver_fat", "liver_fat_cat1",
+                              "visc_subcut_fat")])
+```
+
+The variables that are not allowed to conatin NAs are: sex, age and liver_fat.
+Participants with NA in BMI, and those 2 with extreme liver stiffness/FIB4
+scores are not removed.
+
+
+# overview TODOs just here quick
+
+TODO
+
+- [x] if mash: xxx, but not relevant to further research
+- [x] TABLE 2: demographics !!!
+- [x] barplot splitted cat nr of signif prot/metab
+- [x] if diet: xxx, but not relevant to further research
+- [x] heatmap 3 redo, add in code jo
+- [x] fibrosis: % male, age ... sentence add
+- [x] fib4 score corr SI also mention in results
+
+
+# Getting MASH classification
+
+metabolic dysfunction-associated steatohepatitis (MASH).
+MASH is stage between steatosis and fibrosis (in the masld phenotype). control
+<-> steatosis -> MASH -> cirrhosis (severe fibrosis) -> liver cancer.
+
+fyi: NASH = MASH
+
+feedback christoph: use FAST TM score
+
+FAST = 3 param:
+liver stiffness from fibroscan, CAP (fiver fat), AST
+
+but not in the list...:
+
+Liver	Liver stiffness
+Liver	Interquartile range (IQR) of liver stiffness
+Liver	Controlled Attenuation Parameter
+Liver	Steatose Score
+Fat thickness	Subcutaneous fat thickness
+Fat thickness	Visceral fat thickness
+Clinical examination comment	NA
+Scores	Fibrosis-4 index
+Scores	Fatty liver index
+Scores	Fatty liver index
+Scores	Hepatic steatosis index
+Scores	NAFLD liver fat score
+Scores	Metabolic syndrome
+Scores	NAFLD Fibrose Score
+Scores	NAFLD Fibrose Score
+Scores	Visceral Adipositas Index
+
+
+```{r}
+#' load AST
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+nafldTraitAnnotations()[c("nalp10", "nalp10n", "nalp10u"), ]
+df <- nafldTraitAnnotations() |> as.data.frame()
+dim(df)
+df[1:5,]
+
+
+labdata <- nafldData("Labdata")
+rownames(labdata) <- labdata$AID
+labdata$nalp10[1:5]  #ok, correct one
+colnames(labdata)
+dim(labdata)
+
+#' check unit AST
+labdata[1,'nalp10u']
+
+```
+
+add to the main df, as AST variable
+
+```{r}
+
+#' keep only the retained AIDs
+labdata <- labdata[rownames(labdata) %in% rownames(gal_met_prot_data),]
+dim(labdata)
+
+#' add AST variable for the FAST score
+dim(gal_met_prot_data)
+gal_met_prot_data$AST <- labdata$nalp10
+
+summary(gal_met_prot_data$AST)
+
+```
+
+Calculate the FAST score
+
+FibroScan-AST (FAST) score for the non-invasive identification of patients with non-alcoholic steatohepatitis with significant activity and fibrosis.
+
+FAST = 3 param:
+liver stiffness from fibroscan (LSM), fiver fat (CAP), AST
+
+formula: 
+
+FAST=
+e-1·65+1·07×ln⁡(LSM)+2·66*10-8×CAP3-63·3×AST-1
+1+e-1·65+1·07×ln⁡(LSM)+2·66*10-8×CAP3-63·3×AST-1
+
+in R: exp(2) represents e^2
+in R: log() is natural logarithm
+
+from article: https://www.thelancet.com/journals/langas/article/PIIS2468-1253%2819%2930383-8/fulltext 
+
+art from Christoph:
+https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0266859
+
+
+```{r, eval = FALSE}
+#' testing:
+#' 3 needed param for FAST score
+gal_met_prot_data$liver_stiffness[1]   #kPa
+gal_met_prot_data$liver_fat[1]         #dB/m
+gal_met_prot_data$AST[1]               #U/L
+
+#' formula FAST
+FAST <- (  exp( -1.65 + 1.07 * log(gal_met_prot_data$liver_stiffness[1]) + 2.66 * 10^-8 * gal_met_prot_data$liver_fat[1]^3 - 63.3 * gal_met_prot_data$AST[1]^-1 )) / ( 1 + exp(-1.65 + 1.07 * log(gal_met_prot_data$liver_stiffness[1]) + 2.66 * 10^-8 * gal_met_prot_data$liver_fat[1]^3 - 63.3 * gal_met_prot_data$AST[1]^-1 ))
+
+FAST <- round(FAST, 2)
+FAST
+
+#ok, checked via https://www.mashscan.com/#calculators
+#form from article: https://www.thelancet.com/journals/langas/article/PIIS2468-1253%2819%2930383-8/fulltext 
+```
+
+checked was correct using the FAST Calculator
+
+The FAST score combines results from the FibroScan® with an easily accessible blood biomarker (AST) to help identify patients with active fibrotic-MASH.
+
+Interpretation:
+• A score <0.35 indicates that your liver is likely healthy, with little or no significant fibrosis or inflammation.
+• If your score falls between 0.35 and 0.67, it means your results are inconclusive, and your doctor may recommend additional tests to get a clearer picture of your liver health.
+• A score >0.67 suggests there may be significant fibrosis in your liver, which could indicate advanced liver disease.
+
+```{r}
+#' calcualte and define FAST score column
+gal_met_prot_data$FAST <- (  exp( -1.65 + 1.07 * log(gal_met_prot_data$liver_stiffness) + 2.66 * 10^-8 * gal_met_prot_data$liver_fat^3 - 63.3 * gal_met_prot_data$AST^-1 )) / ( 1 + exp(-1.65 + 1.07 * log(gal_met_prot_data$liver_stiffness) + 2.66 * 10^-8 * gal_met_prot_data$liver_fat^3 - 63.3 * gal_met_prot_data$AST^-1 ))
+
+gal_met_prot_data$FAST
+
+#' give classifications
+gal_met_prot_data$MASH <- 'inconclusive'                          # gray area
+gal_met_prot_data$MASH[
+                      is.na(gal_met_prot_data$FAST)] <- NA
+gal_met_prot_data$MASH[
+                      which(gal_met_prot_data$FAST < 0.35)] <- 'Not_at_risk_MASH'     #no MASH
+gal_met_prot_data$MASH[
+                      which(gal_met_prot_data$FAST > 0.67)] <- 'At_risk_MASH'  #MASH
+gal_met_prot_data$MASH <-
+    factor(gal_met_prot_data$MASH)
+
+summary(gal_met_prot_data$MASH)
+
+```
+
+from art chrisoph:
+the rule-out cutoff of 0.35 and a rule-in cutoff of 0.67, diagnostic performance measures of the FAST™ score for the identification of at-risk NASH 
+
+- < 0.35 NO MASH
+- >= 0.67 == MASH
+- middle, ignore
+
+FAST™ score for identifying patients with at-risk NASH 
+
+
+
+
+# Table 2: distribution data set
+
+```{r}
+#' 1. load the labdata
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+#nafldTraitAnnotations()[c("nalp10", "nalp10n", "nalp10u", "nalp11", "nalp11q", "nalp11n", "nalp11u"), ]
+df <- nafldTraitAnnotations() |> as.data.frame()
+dim(df)
+df[1:5,]
+colnames(df)[1:5]
+#paste0(df$variable, "_", df$name)
+
+write.table(df, "data/traits_nafld.csv", col.names = TRUE)
+
+
+labdata <- nafldData("Labdata")
+
+rownames(labdata) <- labdata$AID
+#rownames(labdata) #AIDs
+
+lab_items <- colnames(labdata)
+#lab_items #nalp... names
+
+#lab_ann <- nafldAnn[lab_items, ]
+#rownames(lab_ann) <- lab_items
+#rownames(lab_ann) #nalp... names
+
+```
+
+the variables are AST: nalp10, nalp10n and nalp10u and for ALT nalp11, nalp11n, nalp11q and nalp11u - the funny thing is that nalp11 is marked as "text" - and only the nalp11q is numeric. no idea why actually.
+
+
+        variable  source version    domain            name   note_detail      
+nalp10    nalp10 Labdata       1 AST (GOT) AST (GOT) (U/L)         value
+nalp10n  nalp10n Labdata       1 AST (GOT) AST (GOT) (U/L)          note
+nalp10u  nalp10u Labdata       1 AST (GOT) AST (GOT) (U/L)          unit
+nalp11    nalp11 Labdata       1 ALT (GPT) ALT (GPT) (U/L)         value
+nalp11q  nalp11q Labdata       1 ALT (GPT) ALT (GPT) (U/L) Numeric value
+nalp11n  nalp11n Labdata       1 ALT (GPT) ALT (GPT) (U/L)          note
+nalp11u  nalp11u Labdata       1 ALT (GPT) ALT (GPT) (U/L)          unit
+           type format unit
+nalp10  numeric     NA   NA
+nalp10n    text     NA   NA
+nalp10u    text     NA   NA
+nalp11     text     NA   NA
+nalp11q numeric     NA   NA
+nalp11n    text     NA   NA
+nalp11u    text     NA   NA
+
+
+
+naan02	naan02	Anthro	1	Anthropometry	Weight (kg)
+
+nadd20	nadd20	Drug Summary	1	Drug usage	Usage of blood pressure lowering therapy (y/n)
+nadd22	nadd22	Drug Summary	1	Drug usage	Usage of lipid modifying agents (y/n)
+nalp18	nalp18	Labdata	1	LDL	LDL (mg/dl)
+nalp18n	nalp18n	Labdata	1	LDL	LDL (mg/dl)
+nalp18u	nalp18u	Labdata	1	LDL	LDL (mg/dl)
+
+
+
+## Get all chris-nafld data there is and write to excel for inspection
+
+get all data
+
+```{r all-nafld-data}
+#' 1. load the metadata
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+sources <- c("Anthro", "Clinical Exam", "Drug Summary", "Labdata", "FFQ", "Interview", "Personal Data", "Recruitment", "Self-admin")
+
+#' Subset all to the same IDs
+AIDs <- rownames(gal_met_prot_data)
+all_metadata <- gal_met_prot_data
+
+for(source in sources){
+  metadata <- nafldData(source)
+  #c("Anthro", "Clinical Exam", "Drug Summary", "Labdata", "FFQ", "Interview", "Personal Data", "Recruitment", "Self-admin") #only takes 1...
+  rownames(metadata) <- metadata$AID
+
+  metadata <- metadata[AIDs, ]
+  
+  all_metadata <- cbind(all_metadata, metadata)
+
+}
+
+dim(all_metadata)
+
+#' change colnames to better understandable
+# define wanted names
+df$new_var_names <- paste0(df$variable, "_", df$name)
+
+# Copy current column names
+col_names <- colnames(all_metadata)
+
+# Match column names in big_df to small_df$old_names
+match_idx <- match(col_names, df$variable)
+
+# Replace matched names with new names
+col_names[!is.na(match_idx)] <- df$new_var_names[match_idx[!is.na(match_idx)]]
+
+# Assign the updated column names
+colnames(all_metadata) <- col_names
+
+#colnames(all_metadata)
+
+
+#nothing filtered, converted: contains notes, units, values, text...
+
+#' write to file for manuel inspection
+handle <- 'data/all_metadata.txt'
+write.table(all_metadata, file = handle, sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+
+```
+
+## make table with all information
+
+```{r pivot-table1}
+
+#' column splitted sex per liver_fat_cat1
+all_metadata$sex_liver_fat_cat1 <- paste0(gal_met_prot_data$Sex, gal_met_prot_data$liver_fat_cat1)
+
+#' pivot table with 8 columns = 2 sex * 4 liver_tat categ
+#' want a average as value
+#' want an SD as value
+#' if categorical (eg sex, sld), provide percentage per group -- first do numbers
+#' 
+
+
+df <- all_metadata
+
+# Sample input: df (data frame), with one column called 'group_col' indicating the 8 categories
+group_col <- "sex_liver_fat_cat1"  # Replace with your actual column name
+
+# Ensure the group column is a factor
+df[[group_col]] <- as.factor(df[[group_col]])
+
+# Identify variable types
+num_vars <- sapply(df, is.numeric)
+fact_vars <- sapply(df, is.factor)
+char_vars <- sapply(df, is.character)
+
+# Exclude the grouping column from processing
+num_vars[group_col] <- FALSE
+fact_vars[group_col] <- FALSE
+
+# ---- 1. Numeric summary: mean ± SD ----
+numeric_summary <- sapply(names(df)[num_vars], function(var) {
+  tapply(df[[var]], df[[group_col]], function(x) {
+    m <- mean(x, na.rm = TRUE)
+    s <- sd(x, na.rm = TRUE)
+    sprintf("%.2f ± %.2f", m, s)
+  })
+})
+
+numeric_summary <- t(numeric_summary)
+colnames(numeric_summary) <- levels(df[[group_col]])
+
+
+# ---- 2. Categorical summary: counts ----
+categorical_summary <- lapply(names(df)[fact_vars], function(var) {
+  tab <- table(df[[var]], df[[group_col]])
+  as.data.frame.matrix(tab)
+})
+names(categorical_summary) <- names(df)[fact_vars]
+
+
+# ---- 2. Categorical summary: counts and percentages ----
+categorical_summary_with_percent <- lapply(names(df)[fact_vars], function(var) {
+  # Create the count table
+  tab <- table(df[[var]], df[[group_col]])
+  df_counts <- as.data.frame.matrix(tab)
+
+  # Compute row-wise percentages
+  df_perc <- round(prop.table(as.matrix(tab), margin = 1) * 100, 1)
+  df_perc <- as.data.frame.matrix(df_perc)
+
+  # Rename percentage columns
+  colnames(df_perc) <- paste0(colnames(df_perc), "_pct")
+
+  # Combine counts and percentages
+  df_combined <- cbind(df_counts, df_perc)
+
+  # Add rownames as a column (factor levels)
+  df_combined <- cbind(Level = rownames(df_combined), df_combined)
+  rownames(df_combined) <- NULL
+
+  df_combined
+})
+
+# Name the list entries
+names(categorical_summary_with_percent) <- names(df)[fact_vars]
+
+
+
+# ---- 3. Output ----
+cat("Summary of numeric variables (mean ± SD):\n")
+#print(numeric_summary)
+
+pandoc.table(
+    numeric_summary, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Table 1 - nummeric variables"))
+
+#' write to file for manuel inspection
+handle <- 'data/Table 1 - numeric variables.csv'
+write.table(numeric_summary, file = handle, sep = "\t",
+            row.names = TRUE, col.names = TRUE)
+
+
+
+#cat("\nSummary of categorical variables (counts per category):\n")
+#for (name in names(categorical_summary_with_percent)) {
+#  cat("\nVariable:", name, "\n")
+#  print(categorical_summary_with_percent[[name]])
+#}
+
+# Combine all into a single wide-format data frame
+cat_summary_wide <- do.call(rbind, lapply(names(categorical_summary_with_percent), function(var_name) {
+  df <- categorical_summary_with_percent[[var_name]]
+  df$variable <- var_name
+  df
+}))
+
+# Reorder columns: variable, level, group counts..., group %...
+# Detect count and percentage columns
+group_cols <- grep("^[^_]+$", names(cat_summary_wide), value = TRUE)        # e.g. A, B, C...
+percent_cols <- grep("^[^_]+_pct$", names(cat_summary_wide), value = TRUE)  # e.g. A_pct, B_pct...
+
+# Arrange columns
+cat_summary_wide <- cat_summary_wide[, c("variable", "Level", group_cols, percent_cols)]
+
+# View result
+head(cat_summary_wide)
+
+#' write to file for manuel inspection
+handle <- 'data/Table 1 - categorical variables.csv'
+write.table(cat_summary_wide, file = handle, sep = "\t",
+            row.names = TRUE, col.names = TRUE)
+
+```
+
+
+# barplot
+
+todo update if numbers changes...
+
+|   | G1 | G2 | G3 |
+|---|----|----|----|
+| Significant proteins | 1 | 6 | 23 |
+| Significant metabolites | 0 | 51 | 50 |
+
+After using macronutrients and PDI index, instead of the scewed food groups.
+nr of participants changed to 341#, so update.
+
+|   | G1 | G2 | G3 |
+|---|----|----|----|
+| Significant proteins | 2 | 5 | 24 |
+| Significant metabolites | 0 | 58 | 48 |
+
+This is also Figure 2A.
+
+```{r barplot-significant-nr-lm, fig.path = IMAGE_PATH, res = 150, fig.cap = "Number of significant circulating proteins, metabolites, and lipids between the control and grade 2 steatosis, and the control and grade 3 steatosis comparisons, respectively"}
+
+sig_tab <- as.matrix(x = rbind(c(2, 5, 24), c(0, 58, 48)))
+rownames(sig_tab) <- c("Significant proteins", "Significant metabolites")
+colnames(sig_tab) <- c("Grade 1 steatosis", "Grade 2 steatosis", "Grade 3 steatosis")
+
+sig_tab
+
+# Create side-by-side barplot
+barplot(sig_tab,
+        beside = TRUE,           # Side-by-side (not stacked)
+        col = c("black", "grey"),  # Colors for each group (row)
+        legend.text = rownames(sig_tab),  # Add legend for groups
+        args.legend = list(x = "topleft"),
+        ylab = "Number of significant molecules",
+        cex.names = 0.9)
+
+
+#barplot with numbers on top
+values <- c(2, 0, 5, 58, 24, 48) # added line
+barobject <- barplot(sig_tab,
+        beside = TRUE,           # Side-by-side (not stacked)
+        col = c("black", "grey"),  # Colors for each group (row)
+        legend.text = rownames(sig_tab),  # Add legend for groups
+        args.legend = list(x = "topleft"),
+        ylab = "Number of significant molecules",
+        cex.names = 0.9)
+text(x = barobject, y = (values+1), label = values, cex = 0.9, col = "black", xpd = TRUE) # added line
+
+
+
+```
+
+
+# fibrosis clinical info
+
+Not for in the paper, but for the sentence regarding if age/gender with 
+fibrosis vs control 
+
+```{r violin-fibr-age-vs-sex-target, fig.path = IMAGE_PATH, fig.height=8, fig.width=7, dpi = 300}
+vioplot(split(gal_met_prot_data$Age,
+              paste0(gal_met_prot_data$Sex, gal_met_prot_data$liver_stiffness_cat2)),
+        ylab = "Age")
+grid()
+```
+
+
+violin plot to show age
+
+```{r violin-fibr-bmi-vs-sex-target, fig.path = IMAGE_PATH, fig.height=8, fig.width=7, dpi = 300}
+vioplot(split(gal_met_prot_data$BMI,
+              paste0(gal_met_prot_data$Sex, gal_met_prot_data$liver_stiffness_cat2)),
+        ylab = "BMI")
+grid()
+```
+
+
+
+
+
+```{r}
+
+
+#' column of interest:
+#all_metadata$liver_stiffness_cat2 
+
+#' pivot table with 2 liver_stiffness_cat2 categ
+#' want a average as value
+#' want an SD as value
+#' if categorical (eg sex, sld), provide percentage per group
+
+
+df <- all_metadata
+
+# Sample input: df (data frame), with one column called 'group_col' indicating the 8 categories
+group_col <- "liver_stiffness_cat2"  # Replace with your actual column name
+
+# Ensure the group column is a factor
+df[[group_col]] <- as.factor(df[[group_col]])
+
+# Identify variable types
+num_vars <- sapply(df, is.numeric)
+fact_vars <- sapply(df, is.factor)
+char_vars <- sapply(df, is.character)
+
+# Exclude the grouping column from processing
+num_vars[group_col] <- FALSE
+fact_vars[group_col] <- FALSE
+
+# ---- 1. Numeric summary: mean ± SD ----
+numeric_summary <- sapply(names(df)[num_vars], function(var) {
+  tapply(df[[var]], df[[group_col]], function(x) {
+    m <- mean(x, na.rm = TRUE)
+    s <- sd(x, na.rm = TRUE)
+    sprintf("%.2f ± %.2f", m, s)
+  })
+})
+
+numeric_summary <- t(numeric_summary)
+colnames(numeric_summary) <- levels(df[[group_col]])
+
+
+# ---- 2. Categorical summary: counts ----
+categorical_summary <- lapply(names(df)[fact_vars], function(var) {
+  tab <- table(df[[var]], df[[group_col]])
+  as.data.frame.matrix(tab)
+})
+names(categorical_summary) <- names(df)[fact_vars]
+
+
+# ---- 2. Categorical summary: counts and percentages ----
+categorical_summary_with_percent <- lapply(names(df)[fact_vars], function(var) {
+  # Create the count table
+  tab <- table(df[[var]], df[[group_col]])
+  df_counts <- as.data.frame.matrix(tab)
+
+  # Compute row-wise percentages
+  df_perc <- round(prop.table(as.matrix(tab), margin = 1) * 100, 1)
+  df_perc <- as.data.frame.matrix(df_perc)
+
+  # Rename percentage columns
+  colnames(df_perc) <- paste0(colnames(df_perc), "_pct")
+
+  # Combine counts and percentages
+  df_combined <- cbind(df_counts, df_perc)
+
+  # Add rownames as a column (factor levels)
+  df_combined <- cbind(Level = rownames(df_combined), df_combined)
+  rownames(df_combined) <- NULL
+
+  df_combined
+})
+
+# Name the list entries
+names(categorical_summary_with_percent) <- names(df)[fact_vars]
+
+
+
+# ---- 3. Output ----
+cat("Summary of numeric variables (mean ± SD):\n")
+#print(numeric_summary)
+
+pandoc.table(
+    numeric_summary, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Table 1 - nummeric variables"))
+
+#' write to file for manuel inspection
+handle <- 'data/fibrosis - numeric variables.csv'
+write.table(numeric_summary, file = handle, sep = "\t",
+            row.names = TRUE, col.names = TRUE)
+
+
+
+#cat("\nSummary of categorical variables (counts per category):\n")
+#for (name in names(categorical_summary_with_percent)) {
+#  cat("\nVariable:", name, "\n")
+#  print(categorical_summary_with_percent[[name]])
+#}
+
+# Combine all into a single wide-format data frame
+cat_summary_wide <- do.call(rbind, lapply(names(categorical_summary_with_percent), function(var_name) {
+  df <- categorical_summary_with_percent[[var_name]]
+  df$variable <- var_name
+  df
+}))
+
+# Reorder columns: variable, level, group counts..., group %...
+# Detect count and percentage columns
+group_cols <- grep("^[^_]+$", names(cat_summary_wide), value = TRUE)        # e.g. A, B, C...
+percent_cols <- grep("^[^_]+_pct$", names(cat_summary_wide), value = TRUE)  # e.g. A_pct, B_pct...
+
+# Arrange columns
+cat_summary_wide <- cat_summary_wide[, c("variable", "Level", group_cols, percent_cols)]
+
+# View result
+head(cat_summary_wide)
+
+#' write to file for manuel inspection
+handle <- 'data/fibrosis - categorical variables.csv'
+write.table(cat_summary_wide, file = handle, sep = "\t",
+            row.names = TRUE, col.names = TRUE)
+
+
+
+```
