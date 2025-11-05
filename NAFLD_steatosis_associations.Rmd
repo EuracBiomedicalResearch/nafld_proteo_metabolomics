@@ -605,7 +605,9 @@ participants.
 ```{r violin-bmi-vs-sex-target, fig.path = IMAGE_PATH, fig.height=8, fig.width=7, dpi = 300}
 vioplot(split(gal_met_prot_data$BMI,
               paste0(gal_met_prot_data$Sex, gal_met_prot_data$liver_fat_cat1)),
-        ylab = "BMI")
+        ylab = "BMI",
+        col = c("#e1b0af", "#e1b0af", "#e1b0af", "#e1b0af",
+                "#aabed0", "#aabed0", "#aabed0", "#aabed0"))
 grid()
 ```
 
@@ -1285,7 +1287,9 @@ pheatmap(es_results, display_numbers = es_results_sig,
 In the third heat map, we plot the coefficients of molecules with >= 1
 significant association in the comparisons of naab13_cat1:
 
-```{r diet-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+This is also Figure S2 (edit in ppt to merge macro + PDI into 1 figure).
+
+```{r diet-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are coeficients"}
 
 #' Extract coefficients
 coef_results_diet <- results_diet[, grep("coef_", colnames(results_diet))] |>
@@ -1330,10 +1334,10 @@ plt <- coef_results_diet_long |>
           plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
           legend.position = "none")
 
-ggsave(paste0(IMAGE_PATH, "diet_naab13cat1_HMcoef.png"),
-       plot = plt, dpi = 600, width = 12,
-       height = 12, units = "cm", scale = 2.5)
-plt  #0 singificant
+#ggsave(paste0(IMAGE_PATH, "diet_naab13cat1_HMcoef.png"),
+#       plot = plt, dpi = 600, width = 12,
+#       height = 12, units = "cm", scale = 2.5)
+#plt  #0 singificant
 
 
 #' keep just the Coefficients of the significant associations
@@ -1655,7 +1659,9 @@ steatosis grade 4 and 1.
 In the third heat map, we plot the coefficients of molecules with >= 1
 significant association in the comparisons of naab13_cat1:
 
-```{r proteins-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+This is also Figure 2B.
+
+```{r proteins-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients."}
 
 #' Extract coefficients
 coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
@@ -1700,10 +1706,10 @@ plt <- coef_results_prot_long |>
           plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
           legend.position = "none")
 
-ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
-       plot = plt, dpi = 600, width = 12,
-       height = 12, units = "cm", scale = 2.5)
-plt
+#ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+#       plot = plt, dpi = 600, width = 12,
+#       height = 12, units = "cm", scale = 2.5)
+#plt
 
 
 #' keep just the Coefficients of the significant associations
@@ -1718,8 +1724,72 @@ coef_results_prot_sig[as.matrix(sig_results_prot)[rownames(coef_results_prot), ]
 
 ```
 
+request with the significance also depicted on the heat map. In the fourth heat
+map, we plot the coefficients of molecules with >= 1 significant association in
+the comparisons of naab13_cat1:
+
+This is also Figure 2B (2).
+
+```{r proteins-heatmap4, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients, with asteriks for the significants variables."}
+
+
+#' Extract coefficients
+coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_prot <- coef_results_prot[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_prot <- results_prot[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_prot <- coef_results_prot[rowSums(sig_results_prot) > 0, ]
+sig_results_prot  <- sig_results_prot[rowSums(sig_results_prot) > 0, ] #for the asterisks
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_prot)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_prot)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_prot)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_prot[coef_results_prot == 0] <- NA
+coef_results_prot <- round(coef_results_prot, 2)
+
+#' add asterisks for the significant
+coef_with_stars <- coef_results_prot
+coef_with_stars[] <- ifelse(sig_results_prot, paste0(round(coef_results_prot, 2), " *"), paste0(round(coef_results_prot, 2), "  "))
+
+#' in long format
+coef_results_prot_long <- melt(as.matrix(coef_results_prot))
+coef_results_prot_long$label <- as.vector(melt(coef_with_stars)$value)
+
+#' ggplot
+plt <- coef_results_prot_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = label)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 3) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_prot)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_prot)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 5),
+          axis.text.y = element_text(hjust = 1, size = 10),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+plt
+```
+
+
 We next create volcano plots showing the results for the individual steatosis
 categories.
+
+This is also Figure S1A.
 
 ```{r prot-FIG-volcano-steatosis, fig.path = IMAGE_PATH, fig.width = 15, fig.height = 5, fig.cap = "Volcano plots for the protein associations with the various steatosis categories (compared to category 1)."}
 plot_volcano <- function(x, comparison = character(), ...) {
@@ -2170,7 +2240,9 @@ pheatmap(es_results, display_numbers = es_results_sig,
 In the third heat map, we plot the coefficients of molecules with >= 1
 significant association in the comparisons of naab13_cat1:
 
-```{r metabolites-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+This is also Figure 2C.
+
+```{r metabolites-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients."}
 
 #' Extract coefficients
 coef_results_met <- results_met[, grep("coef_", colnames(results_met))] |>
@@ -2215,10 +2287,10 @@ plt <- coef_results_met_long |>
           plot.margin = margin(t = 5, l = 145, r = 145, b = 5), #top left right bottom 
           legend.position = "none")
 
-ggsave(paste0(IMAGE_PATH, "metab_naab13cat1_HMcoef.png"),
-       plot = plt, dpi = 600, width = 12,
-       height = 12, units = "cm", scale = 2.5)
-plt
+#ggsave(paste0(IMAGE_PATH, "metab_naab13cat1_HMcoef.png"),
+#       plot = plt, dpi = 600, width = 12,
+#       height = 12, units = "cm", scale = 2.5)
+#plt
 
 
 #' keep just the Coefficients of the significant associations
@@ -2233,10 +2305,73 @@ coef_results_met_sig[as.matrix(sig_results_met)[rownames(coef_results_met), ] ==
 
 ```
 
+request with the significance also depicted on the heat map. In the fourth heat
+map, we plot the coefficients of molecules with >= 1 significant association in
+the comparisons of naab13_cat1:
+
+This is also Figure 2C (2).
+
+```{r metabolites-heatmap4, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients, with asteriks for signifcant variables."}
+
+
+#' Extract coefficients
+coef_results_met <- results_met[, grep("coef_", colnames(results_met))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_met <- coef_results_met[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_met <- results_met[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_met <- coef_results_met[rowSums(sig_results_met) > 0, ]
+sig_results_met  <- sig_results_met[rowSums(sig_results_met) > 0, ] #for the asterisks
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_met)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_met)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_met)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_met[coef_results_met == 0] <- NA
+coef_results_met <- round(coef_results_met, 2)
+
+#' add asterisks for the significant
+coef_with_stars <- coef_results_met
+coef_with_stars[] <- ifelse(sig_results_met, paste0(round(coef_results_met, 2), " *"), paste0(round(coef_results_met, 2), "  "))
+
+#' in long format
+coef_results_met_long <- melt(as.matrix(coef_results_met))
+coef_results_met_long$label <- as.vector(melt(coef_with_stars)$value)
+
+#' ggplot
+plt <- coef_results_met_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = label)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 3) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_met)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_met)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 5),
+          axis.text.y = element_text(hjust = 1, size = 10),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+plt
+```
+
 We investigate the associations for MASLD, i.e. the difference in average
 concentrations between participants of SLD types *MASLD* and *none*. We show the
 results for that coefficient using a volcano plot, coloring significant
 associations in red.
+
+This is also Figure S1B.
 
 ```{r met-FIG-volcano-steatosis, fig.path = IMAGE_PATH, fig.width = 15, fig.height = 5, fig.cap = "Volcano plots for associations of metabolites with steatosis categories."}
 par(mfrow = c(1, 3))
@@ -2837,10 +2972,10 @@ Proteins:
 
 ```{r}
 #' Response to elevated platelet cytosolic Ca2+
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01011, main = 'SERPINA3')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Q14624, main = 'ITIH4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01011, main = 'SERPINA3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Q14624, main = 'ITIH4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
 
 ```
 
@@ -2849,14 +2984,16 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-
 
 ```{r}
 #' Network map of SARS-CoV-2 signaling pathway
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Q14624, main = 'ITIH4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P02750, main = 'LRG1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 'CFI')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05090, main = 'APOD')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$O95445, main = 'APOM')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Q14624, main = 'ITIH4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`Q14624;Q14624-2`, main = 'ITIH4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`Q06033;Q06033-2`, main = 'ITIH3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P02750, main = 'LRG1')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P05156, main = 'CFI')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P08603, main = 'CFH')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P05090, main = 'APOD')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$O95445, main = 'APOM')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`P06396;P06396-2`, main = 'GSN')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P04217, main = 'A1BG')
 
 ```
 
@@ -2864,10 +3001,10 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$O95445, main = 
 
 ```{r}
 #' Post-translational protein phosphorylation
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01008, main = 'SERPINC1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05546, main = 'SERPIND1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01024, main = 'C3')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P00450, main = 'CP')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01008, main = 'SERPINC1')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P05546, main = 'SERPIND1')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01024, main = 'C3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P00450, main = 'CP')
 
 ```
 
@@ -2875,13 +3012,13 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P00450, main = 
 
 ```{r}
 #' Complement and coagulation cascades
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01008, main = 'SERPINC1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05546, main = 'SERPIND1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P01024, main = 'C3')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P02748, main = 'C9')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P04004, main = 'VTN')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P05156, main = 'CFI')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$P08603, main = 'CFH')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01008, main = 'SERPINC1', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P05546, main = 'SERPIND1', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01024, main = 'C3', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P02748, main = 'C9', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P04004, main = 'VTN', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P05156, main = 'CFI', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P08603, main = 'CFH', col = c("#0C6291", "#A63446"))
 
 ```
 
@@ -2895,10 +3032,10 @@ the top SM.
 
 ```{r}
 #' Lipids synthesis/degradation
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`PC ae C34:3`, main = 'PC ae C34:3')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`lysoPC a C24:0`, main = 'lysoPC a C24:0')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`lysoPC a C20:4`, main = 'lysoPC a C20:4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`PC ae C34:3`, main = 'PC ae C34:3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`lysoPC a C24:0`, main = 'lysoPC a C24:0')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`lysoPC a C20:4`, main = 'lysoPC a C20:4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
 
 ```
 
@@ -2906,18 +3043,18 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C16:0`, mai
 
 ```{r}
 #' AAs synthesis/degradation
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Glu, main = 'Glu')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Tyr, main = 'Tyr')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Val, main = 'Val')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ile, main = 'Ile')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ala, main = 'Ala')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Leu, main = 'Leu')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gly, main = 'Gly')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Phe, main = 'Phe')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Trp, main = 'Trp')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Gln, main = 'Gln')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`alpha-AAA`, main = 'alpha-AAA')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$SDMA, main = 'SDMA')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Glu, main = 'Glu', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Tyr, main = 'Tyr', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Val, main = 'Val', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Ile, main = 'Ile', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Ala, main = 'Ala', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Leu, main = 'Leu', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Gly, main = 'Gly', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Phe, main = 'Phe', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Trp, main = 'Trp', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Gln, main = 'Gln', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`alpha-AAA`, main = 'alpha-AAA', col = c("#0C6291", "#A63446"))
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$SDMA, main = 'SDMA', col = c("#0C6291", "#A63446"))
 
 ```
 
@@ -2925,8 +3062,8 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$SDMA, main = 'S
 
 ```{r}
 #' carnitines beta-oxidat
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C0, main = 'C0')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C3, main = 'C3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$C0, main = 'C0')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$C3, main = 'C3')
 
 ```
 
@@ -2934,13 +3071,14 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C3, main = 'C3'
 
 ```{r}
 #' BCAA and carnitines
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C5, main = 'C5')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C4, main = 'C4')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$C3, main = 'C3')
-#plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`C4:1`, main = 'C4:1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Leu, main = 'Leu')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Val, main = 'Val')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ile, main = 'Ile')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$C5, main = 'C5')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$C4, main = 'C4')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$C3, main = 'C3')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`C3:1`, main = 'C3:1')
+#plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`C4:1`, main = 'C4:1')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Leu, main = 'Leu')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Val, main = 'Val')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Ile, main = 'Ile')
 
 ```
 
@@ -2948,9 +3086,10 @@ plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$Ile, main = 'Il
 
 ```{r}
 #' SM metabolism
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM (OH) C22:2`, main = 'SM (OH) C22:2')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C24:1`, main = 'SM C24:1')
-plot(x = gal_met_prot_data$liver_fat_cat2, y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`SM (OH) C22:2`, main = 'SM (OH) C22:2')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`SM C24:1`, main = 'SM C24:1')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`SM C16:0`, main = 'SM C16:0')
+plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$`SM C20:2`, main = 'SM C20:2')
 
 ```
 
@@ -3016,7 +3155,9 @@ lm_output <- as.data.frame(lm_output)
 The impact of including *T2D* in the linear models on the steatosis-related
 protein abundance differences are shown below.
 
-```{r sensitivity-proteomics, fig.width = 12, fig.height = 4}
+Export for the paper SI Figre S0A:
+
+```{r sensitivity-proteomics, fig.path = IMAGE_PATH, fig.width = 12, fig.height = 4}
 par(mfrow = c(1, 3))
 lim <- range(lm_output$coef_liver_fat_cat12, results_prot$coef_liver_fat_cat12)
 plot(results_prot$coef_liver_fat_cat12, lm_output$coef_liver_fat_cat12,
@@ -3091,7 +3232,9 @@ lm_output <- as.data.frame(lm_output)
 The impact of including *T2D* in the linear models on the steatosis-related
 metabolite abundance differences are shown below.
 
-```{r sensitivity-metabolomics, fig.width = 12, fig.height = 4}
+Export for the paper SI Figre S0B:
+
+```{r sensitivity-metabolomics, fig.path = IMAGE_PATH, fig.width = 12, fig.height = 4}
 par(mfrow = c(1, 3))
 lim <- range(lm_output$coef_liver_fat_cat12, results_met$coef_liver_fat_cat12)
 plot(results_met$coef_liver_fat_cat12, lm_output$coef_liver_fat_cat12,
