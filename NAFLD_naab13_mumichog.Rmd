@@ -13,7 +13,7 @@ editor_options:
     wrap: 72
 ---
 
-**Modified**: `r file.info("NAFLD_umetab_naab13cat2_mummichog.Rmd")$mtime`<br />
+**Modified**: `r file.info("NAFLD_naab13_mummichog.Rmd")$mtime`<br />
 **Compiled**: `r date()`
 
 ```{r configuration, include = TRUE, cached = FALSE}
@@ -31,7 +31,7 @@ LOCATION <- 'local' #'server' OR 'local', change in chunk directories if needed
 #print('target of the linear regression model:')
 TARGET_COLNAME <- 'liver_fat_cat2'
 #print('more concrete defined target of the linear regression model:')
-TARGET_LMNAME <- 'liver_fat_cat22'
+TARGET_LMNAME <- 'liver_fat'
 
 ```
 
@@ -73,7 +73,7 @@ We use the logistic regression analysis results table from:
 (nafld_proteo_metabolomics/NAFLD_metab_untargeted_pos_lm.html)[nafld_proteo_metabolomics/NAFLD_metab_untargeted_pos_lm.html].
 There, the exploratory statistical analyis (linear models) are performed on the
 untargeted metabolomics data from the CHRIS-NAFLD study; using the
-catagoris variable "liver_fat_cat22" as a target of interest. Other covariates
+catagoris variable "liver_fat_cat" as a target of interest. Other covariates
 were sex and age. 
 
 The (static) table with the significant metabolites contained 8
@@ -137,7 +137,7 @@ load the results from lm analysis. write table with the ALL
 
 #' load data lm-results
 handle <- file.path(DATA_PATH, 'lm_output_results_umetab_liver_fat_cat2.txt')
-lm_output_results_metab <- read.csv(handle, header = TRUE, sep="\t")  |>
+lm_output_results_metab <- read.csv(handle, header = TRUE, sep = "\t")  |>
     as.data.frame()
 lm_output_results_metab[1:10, 1:10]
 dim(lm_output_results_metab)
