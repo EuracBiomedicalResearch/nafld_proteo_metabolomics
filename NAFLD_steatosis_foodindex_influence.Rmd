@@ -1,0 +1,1901 @@
+---
+title: "Steatosis associated metabolites, lipids and proteins - with PDI index as covariate"
+author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
+affiliation: "Eurac Research, Bolzano, Italy"
+date: "2025-02-27"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+**Modified**: `r file.info("NAFLD_steatosis_foodindex_influence.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+```{r style, message = FALSE, echo = FALSE, warning = FALSE, results = "asis"}
+library("BiocStyle")
+library("kableExtra")
+library("knitr")
+library("rmarkdown")
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now, units = "secs")
+      # return a character string to show the time
+      paste("    Time for this code chunk to run:", round(res,
+        2), "seconds")
+    }
+  }
+}))
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+set.seed(1)
+```
+
+# Introduction
+
+During this workflow, exploratory analyis (Spearman correlations) are performed
+on the relatively quantified Scanning SWATH proteomics data (148 proteins) from
+the metabolic dysfunction-associated steatotic liver disease (MASLD)
+cohort. MASLD, previously known as NAFLD is the most chronic liver disease,
+affecting more than 30% of global population. The MAFLD cohort is a subset of
+approximatley 353 # participants from the Cooperative Health Research in South
+Tyrol (CHRIS) study, which were requested to return for a second resampling and
+additional phenotyping. The NAFLD cohort represent an unhealty group with
+various degrees of steatotic (non-alcoholic) liver disease classifications. See
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd) (respectively the rendered
+html report) for an overview of the data set and the definition of the
+phenotype.
+
+This documents describes the association analysis between circulating
+metabolites, lipids and proteins with liver steatosis.
+
+See the `nafld_data_overview 1.html` report for further
+information regarding the SLD sub-classification.
+
+Regarding steatosis, i.e. Abnormal retention of fat (lipids) within a cell or
+organ. In this scope: liver steatosis.
+The variables containing this parameter is:
+
+Presence of steatotic liver disease (SLD): sonographic evaluation, steatose
+score of 2 – 3.
+
+- *naab13*: liver fat. Can be binarized at an absolute value of 288. "liver_fat"
+- *naab14*: subjective, visual evaluation of the liver fat. Categorical from 1
+  to 3. Values 2 and 3 can be considered steatotic. "visual_fat"
+
+This parameter will be used as the target for a biomarker search in *MASLD*
+participants.
+
+
+# Setup
+
+## Directories
+
+```{r directories, echo = FALSE}
+#' General settings
+filename <- "NAFLD_steatosis_foodindex_influence"
+
+#' Path to save images to; remove if exists.
+IMAGE_PATH <- paste0("images/", filename, "/")
+dir.create(IMAGE_PATH, recursive = TRUE)
+
+#' Path to store RData files
+RDATA_PATH <- paste0("data/RData/", filename, "/")
+dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
+
+#' Path to the data
+DATA_PATH <- '/home/mdegraeve/Documents/Files/Work_Eurac/Data/NAFLD' #FINDME!
+#DATA_PATH <- "."
+
+
+DATASET <- 'CHRIS-NAFLD, none and MASLD'
+
+```
+
+## Packages
+
+```{r packages, message=FALSE}
+#' Load libraries
+library(chrisUtils)
+library(chrisData)
+library(DT)
+library(ggfortify)
+library(ggplot2)
+library(pander)
+library(pheatmap)
+library(plotly)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
+library(tidyfr)
+library(vioplot)
+library(writexl)
+
+```
+
+
+# Data import
+
+## Circulating proteins (tprot) dataset (Scanning SWATH)
+
+The data from proteins was converted into the TDF format and can hence be
+loaded and imported using the `tidyfr` R package. Now we read the full data
+which includes general information for each measurement.
+
+```{r load_prot_dataset, message = FALSE}
+#' load TDF using tidyfr
+#list_data_modules(path = DATA_PATH)
+md1 <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.3",
+                   path = DATA_PATH)
+prot_data <- data(md1)
+prot_ann <- labels(md1)
+stopifnot(all(colnames(prot_data) == rownames(prot_ann)))
+colnames(prot_data) <- prot_ann$description
+rownames(prot_ann) <- prot_ann$description
+
+#' define the columns with protein concentrations
+proteins <- rownames(prot_ann)[prot_ann$type != "categorical"]
+proteins <- rownames(prot_ann)[prot_ann$Genes != ""]
+
+#' select proteins dataframe
+prot_data <- prot_data[, proteins]
+
+```
+
+The loaded data contains the samples as rows, and the protein names as
+colums. The measurements of the `prot_data` object are the relative
+concentrations of protein per sample. No data transformation is performed as the
+abundances are already reported in log2 scale, a normal distribution of the
+proteomics is assumed.
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study. The number of samples and proteins
+are:
+
+```{r subset to NAFLD set, message = FALSE, warning = FALSE}
+prot_data <- prot_data[grep("^008", rownames(prot_data)), ]
+dim(prot_data)
+```
+
+
+## Targeted metabolomics (tmetab) dataset (Biocrates p180 kit)
+
+The data from metabolites was converted into the TDF format and can hence be
+loaded and imported using the `tidyfr` R package. Now we read the full data
+which includes general information for each measurement.
+
+```{r load_tmetb_dataset, message = FALSE}
+#' load TDF using tidyfr
+#list_data_modules(path = DATA_PATH)
+p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.3",
+                    path = DATA_PATH)
+met_data <- data(p180)
+met_ann <- labels(p180)
+stopifnot(all(colnames(met_data) == rownames(met_ann)))
+colnames(met_data) <- met_ann$description
+rownames(met_ann) <- met_ann$description
+
+#' define the columns with metabolite concentrations
+metabolites <- rownames(met_ann)[met_ann$type != "categorical"]
+
+#' select metabolites dataframe
+met_data <- met_data[, metabolites]
+#' Remove the individuals with more than 80% missing values
+rem <- apply(met_data, MARGIN = 1, function(z) {
+    sum(is.na(z)) > length(z) * 0.8
+})
+met_data <- met_data[!rem, ]
+
+
+#' Impute missing values using an uniform distribution, after gap filling
+#na_unidis <- function(z) {
+#    na <- is.na(z)
+#    if (any(na)) {
+#        min = min(z, na.rm = TRUE)
+#        z[na] <- runif(sum(na), min = min/2, max = min)
+#    }
+#    z
+#}
+
+#' Row-wise impute missing values and add the data as a new assay
+#tmp <- apply(met_data, MARGIN = 1, na_unidis)
+#met_data <- t(tmp)
+```
+
+The loaded data contains the samples as rows, and the metabolite names as
+colums. The measurements of the `met_data` object are the absolute
+concentrations of metabolite per sample, in natural scale.
+
+To ensure a normal distribution of the metabololits, we perform log2
+transformation.
+
+```{r m log2-transformation, message = FALSE}
+#' log2 scaling of absolute abundances metabolites
+met_data <- log2(met_data)
+```
+
+Before proceeding with the data analysis we remove the POOL samples. In addition
+we restrict to samples from the NAFLD study. The number of samples and
+metabolites are listed below.
+
+```{r m subset to NAFLD set, message = FALSE, warning = FALSE}
+met_data <- met_data[grep("^008", rownames(met_data)), ]
+dim(met_data)
+```
+
+
+## Diet GA2LEN data
+
+Dietary information, i.e. GA2LEN food frequency questionaires, from the MASLD
+study were loaded and included in the analysis.
+
+DO NOT RUN next 2 chuncks, we use the newly created dietary indices from Essi
+(10/07/2025). 
+
+```{r diet-data, eval = FALSE}
+#' 1. load the metadata regarding the GA2LEN FFQs
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+galan <- nafldData("FFQ")
+rownames(galan) <- galan$AID
+
+#variables, subset:
+#naff001 - naff229 are galan FFQ, and the rest = not!
+
+galan <- galan[, 1:230] #incl AID
+ffq_items <- colnames(galan)[2:230]
+
+#' change to numerical scores instead of FFQ answers
+#' solve using category encoder, in R see:
+#' https://www.r-bloggers.com/2020/02/a-guide-to-encoding-categorical-features-using-r/
+
+#' select categor variables
+categor_variables <- NULL
+for (x in ffq_items){
+  if (class(galan[[x]]) == 'factor' | class(galan[[x]]) == 'character'){  #factor and character
+    categor_variables <- c(categor_variables, x)
+  }
+}
+
+#' using ordinal encoding on categorical vars
+encode_ordinal <- function(x) {
+  if (is.factor(x)) {
+    order <- levels(x)   #retain defined factor level order, wo NA but next step ignored so fine
+    x <- as.numeric(factor(x, levels = order, exclude = NA)) #as numeric, keep NA in dataset
+  } else if (is.character(x)) {
+    print(x) #*
+  }
+  x
+}
+
+#* text info: NOT
+    #naff246 - naff249b
+    #naff260 - naff263a
+
+#' testing
+summary(galan$naff001)
+
+#' apply encoding on categor vars
+galan[, categor_variables] <- lapply(galan[, categor_variables], encode_ordinal)
+dim(galan)
+```
+
+Corresponding fake CV-values (no 'pool' samples) for diet. Too many AIDs, but
+ok, since the filtering on included rownames is done in the lm.
+
+```{r kora-cv, eval = FALSE}
+#' 1. load the metadata regarding the GA2LEN FFQs
+library(nafldData)
+#nafldTraitAnnotations()|> head()
+
+nafldAnn <- nafldTraitAnnotations()
+kora_ann <- nafldAnn[ffq_items, ]
+rownames(kora_ann) <- ffq_items
+#head(kora_ann)
+
+#' TEMP, just accept all features now as having good cv
+cv_values <- 0
+#' save in the met_ann as column
+kora_ann$cv_qc_chris <- cv_values
+```
+
+The newly created dietary indices from Essi are saved under 
+NAFLD_dietary_indices_data_Marilyn. And note in the
+lm: "you should also correct your models for total energy intake (just have it
+as covariate in the model, nanu006a)". This was added in the section of dietary
+lms.
+
+```{r NAFLD-indices}
+#' load the NAFLD_dietary_indices_data
+handle <- file.path(DATA_PATH, 'GALAN', 'NAFLD_dietary_indices_data_Marilyn.txt')
+galan <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+
+#'galan is with , instead of decimal point so change
+comma_to_point <- function(x) {
+  x <- scan(text = x, dec = ",", sep = ".")
+  x
+}
+galan <- apply(galan, MARGIN = 2, comma_to_point) |>
+    as.data.frame()
+rownames(galan) <- paste0('00', as.character(galan$AID))
+#dim(galan)
+#colnames(galan)
+#galan$AID[1:5]
+#head(galan)
+
+#' replace the aids columns with 00 start and as a string
+galan$AID <- rownames(galan)
+
+#' variables
+ffq_items <- colnames(galan)[2:ncol(galan)] #excl AID col
+dim(galan)
+```
+
+Also add the 4 macros and add to the `ffq_items`.
+
+```{r NAFLD_food_macros}
+library(nafldData)
+#need these one
+#nanu003 (protein), nanu004 (total fat), nanu005 (total carbs), nanu019b (saturated fatty acids), nanu023b (monounsaturated fatty acids), nanu025b (polyunsaturated fatty acids), nanu028b (trans fatty acids)
+
+ffq <- nafldData("FFQ")
+rownames(ffq) <- ffq$AID
+
+galan$protein <- ffq[rownames(galan), 'nanu003']
+galan$total_fat <- ffq[rownames(galan), 'nanu004']
+galan$total_carbs <- ffq[rownames(galan), 'nanu005']
+galan$saturated_fatty_acids <- ffq[rownames(galan), 'nanu019b']
+galan$monounsaturated_fatty_acids <- ffq[rownames(galan), 'nanu023b']
+galan$polyunsaturated_fatty_acids <- ffq[rownames(galan), 'nanu025b']
+galan$trans_fatty_acids <- ffq[rownames(galan), 'nanu028b']
+
+#' variables
+ffq_items <- colnames(galan)[2:ncol(galan)] #excl AID col
+dim(galan)
+```
+
+
+## Metadata (excel)
+
+All available trait (phenotype) data was defined in the
+[nafld_data_overview.Rmd](nafld_data_overview.Rmd), is loaded below and merged
+with the log2 transformed proteomics data of the NAFLD cohort.
+
+```{r add phenotype dataa}
+#' load xlsx file instead of below
+handle <- 'masld_phenotypes.xlsx'
+masld_phenotype_df <- read_excel(file.path(DATA_PATH, handle)) |>
+    as.data.frame()
+rownames(masld_phenotype_df) <- masld_phenotype_df$AID
+#head(masld_phenotype_df, 5)
+metadata <- colnames(masld_phenotype_df)[3:ncol(masld_phenotype_df)] #info wo AIDs
+#dim(masld_phenotype_df)
+
+#' make sure sld_type is a factor with group 'none' as the baseline
+masld_phenotype_df$sld_type <- factor(masld_phenotype_df$sld_type,
+                                      levels = c('none', 'MASLD',
+                                                 'MetALD', 'SLD'))
+print('the sld types are:')
+levels(masld_phenotype_df$sld_type)
+print('nr of samples per sld types:')
+table(masld_phenotype_df$sld_type)
+```
+
+
+# Merge tmetab, tprot, kora and metadata
+
+Merging all data tables. Note that restrict the data to participants for which
+we have proteomics **and** metabolomics data. This also ensures that any
+potential study drop-outs are no longer considered in the data (as their
+proteomics or metabolomics data was removed).
+
+There were less AIDs present in the dietary data, so we restrict with the data
+to participants for which we have proteomics **and** metabolomics **and** 
+dietary data. ??? TODO findme!!!
+
+```{r merge-dfs}
+#AIDs <- intersect(rownames(prot_data), rownames(met_data))
+AIDs1 <- intersect(rownames(prot_data), rownames(met_data))
+AIDs2 <- intersect(rownames(masld_phenotype_df), rownames(galan))
+AIDs <- intersect(AIDs1, AIDs2)
+
+#' Subset all datasets to the same IDs
+prot_data <- prot_data[AIDs, ]
+met_data <- met_data[AIDs, ]
+masld_phenotype_df <- masld_phenotype_df[AIDs, ]
+galan <- galan[AIDs, ]
+
+#' merge with proteomics data
+prot_data$AID <- rownames(prot_data)
+prot_data <- merge(prot_data, masld_phenotype_df, by = 'AID')
+
+#' merge all sets
+met_data <- as.data.frame(met_data)
+met_data$AID <- rownames(met_data)
+met_prot_data <- merge(prot_data, met_data, by = 'AID')
+
+#' merge with metabolomics data only
+met_data <- merge(met_data, masld_phenotype_df, by = 'AID')
+
+#' merge all sets, galan too
+met_prot_data <- as.data.frame(met_prot_data)
+rownames(met_prot_data) <- met_prot_data$AID
+gal_met_prot_data <- merge(met_prot_data, galan, by = 'AID') #galan has only 001 AIDs
+rownames(gal_met_prot_data) <- gal_met_prot_data$AID
+#gal_met_prot_data[1:5, 1:5]
+dim(gal_met_prot_data)
+
+#' write to file for manuel inspection
+handle <- 'data/gal_met_prot_data.txt'
+write.table(gal_met_prot_data, file = handle, sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+```
+
+All data sets are subset to `r length(AIDs)` study participants.
+
+
+# Clean data and restrict to relevant participants
+
+The data is further processed and cleaned to remove unreliable
+measurements. Subsequently the data is restricted to relevant participants. We
+thus next:
+
+- remove unreliable liver fat measurements
+- exclude participants with MetALD and SLD to ensure a more homogeneous data set
+- remove participants with missing values in relevant variables
+- define variables and phenotype(s) for the analysis
+
+Add the information from the [nafld_data_overview.Rmd](nafld_data_overview.Rmd)
+report regarding the steatosis, using the parameter naab11
+(higher values are worse). Values for participants that have a naab12
+(liver stiffness IQR) > 30 should be either removed or taken with care. Below we
+remove these unreliable measurements.
+
+```{r load-liver-param2}
+#' remove samples with  naab12 (liver stiffness IQR) > 30
+gal_met_prot_data$liver_stiffness[
+                      which(gal_met_prot_data$liver_stiffnes_iqr > 30)] <- NA
+```
+
+We next remove the MetALD and SLD participants.
+
+```{r keep only none and MASLD types}
+#' because problem 2 proteins only NAs in some sld types,
+#' keep only none and MASLD
+gal_met_prot_data <- gal_met_prot_data[gal_met_prot_data$sld_type %in%
+                                       c('none', 'MASLD'), ] #
+gal_met_prot_data$sld_type <- droplevels(gal_met_prot_data$sld_type)
+gal_met_prot_data$sld_type <- factor(gal_met_prot_data$sld_type)
+```
+
+We next remove participants with missing values for relevant variables:
+- liver fat measurement
+
+```{r}
+#' Define variables for which we don't allow missing values
+no_na_var <- c("liver_fat")
+has_na <- lapply(gal_met_prot_data[, no_na_var, drop = FALSE], is.na) |>
+    do.call(what = cbind)
+#' Remove rows (participants) with a missing value in any of the above
+#' variables
+gal_met_prot_data <- gal_met_prot_data[rowSums(has_na) == 0, , drop = FALSE]
+```
+
+Remove fibrosis outlier values: **CURRENTLY NOT DONE**.
+Previous outlier removal removed a participant with a FIB4 score of 7.8. This
+participant was originally removed. The second outlier removal excluded
+a participant with a liver_stiffness value of 34. Both participants are still
+present, as fibrosis is not the phenotype of interest anymore.
+
+We next define the categorical variables from numeric measurements:
+
+Add a categoric liver_stiffness category too, using both the definition of
+Christoph (7, 15 cutoffs) and in literature (7, 12.5 kPa cutoffs).
+
+```{r liver-stiffness-category}
+#' naab11 according to Christoph
+gal_met_prot_data$liver_stiffness_cat1 <- 2
+gal_met_prot_data$liver_stiffness_cat1[
+                      is.na(gal_met_prot_data$liver_stiffness)] <- NA
+gal_met_prot_data$liver_stiffness_cat1[
+                      which(gal_met_prot_data$liver_stiffness < 7)] <- 1
+gal_met_prot_data$liver_stiffness_cat1[
+                      which(gal_met_prot_data$liver_stiffness > 15)] <- 3
+gal_met_prot_data$liver_stiffness_cat1 <-
+    factor(gal_met_prot_data$liver_stiffness_cat1)
+
+#' naab11 according to literature
+gal_met_prot_data$liver_stiffness_cat2 <- 2
+gal_met_prot_data$liver_stiffness_cat2[
+                      is.na(gal_met_prot_data$liver_stiffness)] <- NA
+gal_met_prot_data$liver_stiffness_cat2[
+                      which(gal_met_prot_data$liver_stiffness < 7)] <- 1     #mild or absent fibrosis
+gal_met_prot_data$liver_stiffness_cat2[
+                      which(gal_met_prot_data$liver_stiffness > 12.5)] <- 3  #cirrhosis
+gal_met_prot_data$liver_stiffness_cat2 <-
+    factor(gal_met_prot_data$liver_stiffness_cat2)
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+```
+
+Add a categoric liver_fat (i.e. steatosis) category, using the following
+cutoffs:
+
+- "normal": A score below 238 dB/m means the amount of fatty change in your
+  liver is not higher than normal.
+- grade steatosis S1: 238 to 260 dB/m
+- grade steatosis S2: 260 to 290 dB/m
+- grade steatosis S3: 290 to 400 dB/m
+
+Depending on the distribution, look only at the extreme normal - steatosis.
+
+```{r liver-fat-category}
+#' naab13 make 4 groups
+gal_met_prot_data$liver_fat_cat1 <- NA
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat < 238)] <- 1 #normal
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat >= 238)] <- 2
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat > 260)] <- 3
+gal_met_prot_data$liver_fat_cat1[which(gal_met_prot_data$liver_fat > 290)] <- 4
+gal_met_prot_data$liver_fat_cat1 <- factor(gal_met_prot_data$liver_fat_cat1)
+
+#' naab13 make 2 groups
+gal_met_prot_data$liver_fat_cat2 <- NA
+gal_met_prot_data$liver_fat_cat2[which(gal_met_prot_data$liver_fat < 238)] <- 1 #normal
+gal_met_prot_data$liver_fat_cat2[which(gal_met_prot_data$liver_fat > 290)] <- 2  #steatosis, high S3
+
+#' appearantly differnet cutoffs, depending what background...
+#' https://www.mskcc.org/cancer-care/patient-education/understanding-your-fibroscan-results
+```
+
+At last we ensure categorical variables are encoded as a factor. Also, we create
+additional variable for age per 10y, because coefficients and effect sizes
+correspond to one year difference, and the anual difference is
+neglectible. Dividing age with 10, difference in coefficents and effect sizes
+would correspond to 10 years difference and it would be easier to define
+meaningful cut-off. Finally, we add a visc_subcut_fat variable on the dataset,
+comprising the ratio of visceral to subcutaneous fat thickness.
+
+
+```{r define-age10-variable, message = FALSE}
+#' Convert categorical variables to factors
+col_cat <- c("case", "self_DM", "med_DM", "fasting", "no_drinking",
+             "med_BP", "med_lip", "med_MS", "T2D", "Sex", "MASLD")
+for (i in col_cat)
+    gal_met_prot_data[, i] <- as.factor(gal_met_prot_data[, i])
+
+#' define age per 10y group
+gal_met_prot_data$Age_10 <- gal_met_prot_data$Age / 10
+gal_met_prot_data$visc_subcut_fat <- gal_met_prot_data$visc_fat /
+    gal_met_prot_data$body_fat
+```
+
+
+## Summary of the final data set
+
+```{r}
+summary(gal_met_prot_data[, c("Age", "Sex", "T2D", "MASLD", "FIB4", "BMI",
+                              "liver_stiffness", "liver_fat", "liver_fat_cat1",
+                              "visc_subcut_fat")])
+```
+
+The variables that are not allowed to conatin NAs are: sex, age and liver_fat.
+Participants with NA in BMI, and those 2 with extreme liver stiffness/FIB4
+scores are not removed.
+
+
+# Association analyses
+
+We next perform the association analyses between food items, metabolites and
+proteins with the liver fat categories.
+
+
+## Association between circulating proteins and liver fat (steatosis)
+
+Model setup with "estim_daily_nutr_intake" and "pdi_score" in addition:
+as estim is all coef=0, rm and keep only pdi_score. this can be compared with 
+the model in "NAFLD_steatosis_associations.html" 
+
+```{r define-lm--covariates-and-target}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10", "pdi_score")
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat1'
+print(TARGET)
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+#' variables are the output y in lm(y ~ .):
+#print(proteins)
+
+print('nr of variables inspected:')
+print(length(proteins))
+
+print('nr of individuals inspected:')
+print(nrow(gal_met_prot_data))
+
+```
+
+To identify proteins associated with liver steatosis, seperate linear regression
+models are fitted for all proteins separately using their (log2) abundance as
+response variable with sex, age and the (categorical) steatosis as a covariates.
+
+Model coefficients and p-values are provided. Raw p-values are adjusted for
+multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+Function to use.
+
+```{r linear model-diet with CIs, message=FALSE}
+
+#' Define a function to fit the linear model:
+#' - fit the linear model
+#' - extract the coefficients and p-values skipping the intercept
+#' - return the result as a one-row matrix, columns being coefficients
+#'   and p-values
+funForLinReg <- function(analyte, data) {
+    y <- data[, analyte]
+    data <- data[, c(COVARIATES, TARGET)]
+    res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
+    pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
+    rownames(pvals) <- analyte
+    colnames(pvals) <- c(paste0("coef_", rownames(res)),
+                         paste0("p-value_", rownames(res)))
+    pvals
+}
+
+#' tests
+#gal_met_prot_data[1:5, c("Sex", "Age", "FIB4")]
+#gal_met_prot_data[1:5, ffq_items[1]]
+#data <- gal_met_prot_data
+#analyte <- ffq_items[1]
+#funForLinReg(analyte, gal_met_prot_data)
+#analyte <- ffq_items[14]
+#funForLinReg(analyte, gal_met_prot_data)
+#for (analyte in ffq_items) {
+#  print(analyte)
+#  funForLinReg(analyte, gal_met_prot_data)
+#}
+
+```
+
+run the LM.
+
+```{r linear-model-prot}
+#' Fit linear models and extract coefficients and p-values on each protein
+lm_output <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data) |>
+    do.call(what = rbind)
+
+#' Adjust p-values for multiple hypothesis testing
+adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+lm_output <- cbind(lm_output, adjp)
+```
+
+Next we calculate the effect sizes.
+
+To obtain comparable coefficients, prior to linear modelling all the
+proteins
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant). In such
+autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
+parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r lm--effectsize, message=FALSE}
+#' Perform autoscaling for effect size (es) calculation
+gal_met_prot_data_scaled <- gal_met_prot_data
+gal_met_prot_data_scaled[, proteins] <- gal_met_prot_data[, proteins] |>
+    as.matrix() |>
+    scale(scale = TRUE)
+
+#' fit linear models and extract the coefficients
+es <- lapply(proteins, FUN = funForLinReg, data = gal_met_prot_data_scaled) |>
+    do.call(what = rbind)
+es <- es[, grep("coef", colnames(es))]
+colnames(es) <- sub("coef", "effectSize", colnames(es))
+lm_output <- cbind(lm_output, es)
+```
+
+To call a proteins *significant* we consider, in addition to the *statistical*
+significance levels also the magnitude of its coefficient, relative to the
+coefficient of variation (CV) for that protein. The CV, calculated on
+study-internal QC samples (pools of all samples) are a measure of the technical
+noise specific for that protein in the present data set. Thus, with this method
+we prioritize proteins with a larger difference between the observed
+(biological) difference and the (separately estimated) technical variance.
+
+Below we add thus evaluate for each protein and comparison whether it
+fulfills that criteria.
+
+```{r lm--define significance criteria}
+#' define the different coefficients as comparisons
+comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
+
+#' define which proteins are considered statistically significant
+sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
+colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
+#colSums(sign_p)
+
+#' Convert the (absolute) difference in abundance into a difference in
+#' percentage based on a (log2) coefficient.
+diff_percentage <- function(x) {
+    (2^abs(x) - 1) * 100
+}
+diff_perc <- apply(lm_output[, comps], MARGIN = 2, diff_percentage)
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
+
+#' Define for which proteins the difference in concentration is larger
+#' than a certain proportion of the CV
+cv_cut <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  ##after eval, set to 50
+        prot_ann[proteins, "cv_qc_chris"]
+}) |>
+    do.call(what = cbind)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
+
+#' Use statistical significance for non-categorical traits instead of bool
+sign_cv <- sign_p & cv_cut
+sign_cv[, "significant_Age_10"] <- sign_p[, "significant_Age_10"]
+
+#' Combine with result from linear model converting to a data.frame to
+#' avoid logicals being converted to numeric
+lm_output <- data.frame(lm_output, sign_cv)
+```
+
+The number of proteins called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below. For a complete
+comparison, the number of proteins complying to either the adjusted p value
+or either the CV-value, as single threshold criteria, are calculated and
+summarized here as well.
+
+```{r lm--table-sig, results = "asis"}
+#' merge to p-adj to cv significance summary
+sig_tab <- data.frame(
+    `p_adj < 0.05` = colSums(sign_p),
+    `cv thresh` = colSums(cv_cut),
+    significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
+    check.names = FALSE)
+
+pandoc.table(
+    sig_tab, style = "rmarkdown",
+    caption = paste0("Number of significant proteins per tested covariate. ",
+                     " *p_adj < 0.05*: number of statistically significant",
+                     " proteins.",
+                     " *cv*: number of proteins with percentage abundance",
+                     " difference above the CV-based threshold.",
+                     " *significant*: number of proteins that fulfill ",
+                     "the CV-based criteria in addition to the p-adj. threshold"))
+```
+
+Export results for inspection:
+
+```{r lm--export-results}
+results_prot <- data.frame(
+    prot_ann[rownames(lm_output),
+             c("description", "long_description", "PeptideNN",
+               "PeptideNames", "Protein.Ids", "Protein.Names",
+               "Genes", "Modified.Sequence", "Stripped.Sequence",
+               "Precursor.Id", "cv_qc_chris")],
+    lm_output,
+    diff_perc
+)
+
+#' inclusing inspection of the CV-value of each protein
+handle <- file.path(RDATA_PATH, 'lm_output_results_proteins.txt')
+write.table(results_prot, file=handle, sep ="\t",
+            row.names = FALSE, col.names = TRUE)
+```
+
+The full results are shown below.
+
+```{r, eval = TRUE}
+keep <- grepl("description|Genes|coef|p.adj", colnames(results_prot))
+tmp <- results_prot[, keep]
+datatable(tmp) |>
+    formatRound(columns = which(vapply(tmp, is.numeric, logical(1))),
+                digits = 3)
+```
+
+We visualize the associations in a heatmap. The effect size are added for the
+associations, for the significant proteins (min 1 significance to
+covariate). also for the not significant associations, the effect size is shown.
+
+```{r prot-lm--heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for proteins with at least one significant association."}
+#' Extract effect sizes
+es_results <- results_prot[, grep("effectSize_", colnames(results_prot))] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results <- results_prot[, grep("significant_", colnames(results_prot))] |>
+    as.matrix()
+es_results <- es_results[rowSums(sig_results) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(es_results)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((es_results)), method = "ward.D")
+clust2 <- hclust(dist(t(es_results)), method = "ward.D")
+
+#' clean roundup nrs for plot
+es_results[es_results == 0] <- NA
+es_results <- round(es_results, 2)
+
+#' info regarding FIB4
+#print('nr of proteins with a not-zero effect size in the FIB4 group:')
+#sum(es_results[, 'effectSize_FIB4'] != 0)
+
+#' in long format
+es_results_long <- melt(as.matrix(es_results))
+
+#' ggplot
+plt <- es_results_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Effect Size") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    scale_x_discrete(
+        expand = c(0, 0), limits = colnames(es_results)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(es_results)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_SLDtypes_effect_sizes.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+```
+
+In second plot, only the significant effect size labels were added to the
+heat map. also, the dendograms after hierarchical clustering are shown.
+
+```{r prot-lm--heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+#' keep just the effect sizes of the significant associations
+es_results_sig <- es_results
+es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
+
+#' plot
+colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
+pheatmap(es_results, display_numbers = es_results_sig,
+         number_color = "#444444", fontsize_number = 7)
+
+```
+
+As expected, the strongest effects are visible in the comparison between
+steatosis grade 4 and 1.
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r proteins-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_prot <- coef_results_prot[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_prot <- results_prot[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_prot <- coef_results_prot[rowSums(sig_results_prot) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_prot)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_prot)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_prot)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_prot[coef_results_prot == 0] <- NA
+coef_results_prot <- round(coef_results_prot, 2)
+
+#' in long format
+coef_results_prot_long <- melt(as.matrix(coef_results_prot))
+
+#' ggplot
+plt <- coef_results_prot_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 3) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_prot)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_prot)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 5),
+          axis.text.y = element_text(hjust = 1, size = 10),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_prot_sig <- coef_results_prot
+coef_results_prot_sig[as.matrix(sig_results_prot)[rownames(coef_results_prot), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results_prot) <- sub("Coefficient_", "", colnames(coef_results_prot))
+#pheatmap(coef_results_prot, display_numbers = es_results_prot_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
+```
+
+We next create volcano plots showing the results for the individual steatosis
+categories.
+
+```{r prot-FIG-volcano-steatosis, fig.path = IMAGE_PATH, fig.width = 15, fig.height = 5, fig.cap = "Volcano plots for the protein associations with the various steatosis categories (compared to category 1)."}
+plot_volcano <- function(x, comparison = character(), ...) {
+    X <- x[, paste0("coef_", comparison)]
+    Y <- x[, paste0("p.adj_", comparison)]
+    Y[Y == 0] <- min(Y > 0) / 10
+    plot(X, -log10(Y), pch = 21,
+         col = "#000000ce", bg = "#00000060",
+         xlab = "coefficient", ylab = expression(-log[10](p[adjusted])),
+         ...)
+}
+significant_points <- function(x, comparison = character(),
+                               diff_perc = 2, col = "#E41A1CCE",
+                               bg = "#E41A1C40", ...) {
+    s <- x[, paste0("significant_", comparison)]
+    X <- x[, paste0("coef_", comparison)]
+    Y <- x[, paste0("p.adj_", comparison)]
+    Y[Y == 0] <- min(Y > 0) / 10
+    if (any(s))
+        points(X[s], -log10(Y[s]), col = col, bg = bg, pch = 21)
+}
+
+par(mfrow = c(1, 3))
+xl <- range(results_prot[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13",
+                             "coef_liver_fat_cat14")])
+yl <- c(0, -log10(min(results_prot[, c("p.adj_liver_fat_cat12",
+                                       "p.adj_liver_fat_cat13",
+                                       "p.adj_liver_fat_cat14")])))
+sigs <- results_prot$significant_liver_fat_cat12 |
+    results_prot$significant_liver_fat_cat13 |
+    results_prot$significant_liver_fat_cat14
+
+plot_volcano(results_prot, "liver_fat_cat12", main = "Category 2",
+             xlim = xl, ylim = yl)
+points(results_prot$coef_liver_fat_cat12[sigs],
+       -log10(results_prot$p.adj_liver_fat_cat12[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+plot_volcano(results_prot, "liver_fat_cat13", main = "Category 3",
+             xlim = xl, ylim = yl)
+points(results_prot$coef_liver_fat_cat13[sigs],
+       -log10(results_prot$p.adj_liver_fat_cat13[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+plot_volcano(results_prot, "liver_fat_cat14", main = "Category 4",
+             xlim = xl, ylim = yl)
+points(results_prot$coef_liver_fat_cat14[sigs],
+       -log10(results_prot$p.adj_liver_fat_cat14[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+
+```
+
+Difference of abundance increases with the steatosis grade. Also, the
+significant proteins for steatosis grade 4 show a trend of difference already in
+steatosis grade 2 and 3 participants.
+
+Proteins with significant different abundance for at least one steatosis grade
+class are shown below.
+
+```{r lm--table-sig-sex, results = "asis", echo = FALSE}
+tmp <- results_prot[sigs, c("Genes",
+                       "coef_SexMale", "p.adj_SexMale",
+                       "coef_Age_10", "p.adj_Age_10",
+                       "coef_liver_fat_cat12", "p.adj_liver_fat_cat12",
+                       "coef_liver_fat_cat13", "p.adj_liver_fat_cat13",
+                       "coef_liver_fat_cat14", "p.adj_liver_fat_cat14")]
+tmp <- tmp[order(tmp$p.adj_liver_fat_cat14), ]
+
+pandoc.table(
+    tmp, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Protiens significantly associated with at least ",
+                     "on steatosis category"))
+```
+
+Significant proteins associated with steatosis (top 5 strongest associated
+proteins) are visualized below. Points are colored according to sample sex.
+
+```{r lm--prep for plotting}
+#' prep for plotting
+PLOTLY <- FALSE
+ggplotly_or_not <- function(x, interactive = TRUE) {
+    if (interactive) ggplotly(x)
+    else print(x)
+}
+myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
+
+box_plot <- function(data, aes, analyte) {
+    ggplot(data, aes) +
+        geom_jitter(position = position_jitter(0.24),
+                    aes(colour = Sex, alpha = 0.5 , size = (BMI/10))) +
+        geom_violin(trim = FALSE, aes(alpha = 0.5)) +
+        stat_summary(fun = median, geom = "point", shape = 23, size = 2) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) + labs(title = analyte) +
+        theme_bw ()
+}
+
+scatter_plot <- function(data, aes, analyte) {
+    ggplot(data, aes) +
+        geom_jitter(position = position_jitter(0.24),
+                    aes(colour = Sex, alpha = 0.5 , size = 0.1)) +
+        stat_smooth(method = lm, se = TRUE) + #with standard error
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8),
+              axis.title.y = element_blank()) + labs(title = analyte) +
+        theme_bw ()
+}
+
+#' for boxplot func to work automatically
+tmp_colnr <- which(colnames(gal_met_prot_data) == TARGET)
+gal_met_prot_data$tmp_target <- gal_met_prot_data[, tmp_colnr]   #value of eg BMI
+```
+
+```{r prot-lm-top1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[1]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]  #intensities of metabolite
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r prot-lm-top2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[2]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r prot-lm-top3, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[3]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r prot-lm-top4, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[4]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r prot-lm-top5, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[5]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+### Summary
+
+- 20 instead of 24 proteins are significantly changed between contrl-grade 3 
+steatosis, when adding PDI_index as covariate. 
+- 0 metabolites are significant if looking at pdi score
+
+
+### Compare LM with and without PDI covariate - scatter plot
+
+read the coeficients from model with and without
+
+```{r}
+#' load results from y ~ Sex + Age_10 + pdi_score + liver_fat_cat1
+handle <- 'data/RData/NAFLD_steatosis_foodindex_influence/lm_output_results_proteins.txt'
+coef_with_prot <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+#head(coef_with_prot)
+
+#' load results from y ~ Sex + Age_10 + liver_fat_cat1
+handle <- 'data/RData/NAFLD_steatosis_associations/lm_output_results_proteins.txt'
+coef_without_prot <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+#head(coef_without_prot)
+
+```
+
+plot scatter
+
+```{r}
+#' scatter
+plot(coef_without_prot$coef_liver_fat_cat14, coef_with_prot$coef_liver_fat_cat14,
+     xlab = expression(coef),
+     ylab = expression(coef[+PDI]), main = "Steatosis grade 3 vs normal",
+     pch = 21, col = "#00000080", bg = "#00000040")
+
+```
+
+diff proteins are: lost: "Gelsolin" "Complement factor I"            
+ "Corticosteroid-binding globulin" "Ficolin-3"    
+and won new signif: /.
+ 
+=> Those were not discussed in paper, as not >1 metabolite altered in within the
+same pathway.
+
+```{r}
+
+#' find the ones that are unique to coef without pdi (48)
+setdiff(coef_without_prot[coef_without_prot$significant_liver_fat_cat14, ]$long_description,
+       coef_with_prot[coef_with_prot$significant_liver_fat_cat14, ]$long_description)
+
+#' find the ones that are unique to coef without pdi (48)
+setdiff(coef_with_prot[coef_with_prot$significant_liver_fat_cat14, ]$long_description,
+       coef_without_prot[coef_without_prot$significant_liver_fat_cat14, ]$long_description)
+
+```
+
+check: 24 - 4 + 0 = 20
+
+
+### Compare LM with and without PDI covariate
+
+compare the with and without interaction LMs from above. Use the log likelihood
+ratio test.
+
+```{r log-likelihood-ratio-test-prot}
+library(lmtest)
+
+#' for dataset SWATH proteins
+variables <- proteins
+
+#' loop over all the metabolites
+pvals <- c()
+vars <- c()
+
+for (i in variables){
+  #print(i)
+
+  #analyte
+  analyte <- i
+
+  #data
+  data <- gal_met_prot_data
+  data <- data[complete.cases(data[, analyte]), ]
+  y <- data[, analyte]
+  data <- data[, c(COVARIATES,
+                   TARGET)]
+  data <- Filter(function(x) length(unique(x)) > 1, data)
+
+  #lm with
+  lm_with <- lm(y ~ Sex + Age_10 + pdi_score + liver_fat_cat1,
+                          data = data, na.action = na.omit)
+  #lm without
+  lm_without <- lm(y ~ Sex + Age_10 + liver_fat_cat1,
+                          data = data, na.action = na.omit)
+
+  #' info: https://www.statology.org/likelihood-ratio-test-in-r/
+  #' h0: both models fit data equally well
+  #' if p < 0.05, reject null hypothesis (aka a significant improvement in fit over the 1st model)
+  #perform likelihood ratio test for differences in models
+  llr <- lrtest(lm_with, lm_without)
+
+  # Extract p-value
+  p_value <- llr$`Pr(>Chisq)`[2]
+  #print(p_value)  #warning: is rounded up to 0 is very small
+
+  #' save info
+  vars <- c(vars, i)
+  pvals <- c(pvals, p_value)
+}
+
+llr_summary <- NULL
+llr_summary$variables <- vars
+llr_summary$pvals <- pvals
+llr_summary <- as.data.frame(llr_summary)
+
+```
+
+For each p-value in the llr, if p-value > 0.05, we keep the null hypothesis. 
+
+Thus, we would conclude that the model with the PDI covariate in the predictors 
+offers EQUAL fit over the model without the PDI covariate in the predictors.
+
+print the results for PDI and all proteins/metabolites with signif differ. 
+Note MDG: this is ignoring FDR? so...
+
+```{r summary-llr-test-prot}
+#' All pvals
+#pandoc.table(llr_summary, style = "rmarkdown", split.table = Inf,
+#             caption = "P-values from likelihood ratio test")
+
+#' which protein/metab is p-value < 0.05, so does not behave same?
+tmp <- llr_summary[llr_summary$pvals < 0.05, ]
+tmp
+nrow(tmp)
+
+```
+
+for these 9, differs:
+
+          variables       pvals
+6            P02649 0.038029009
+13           P07360 0.015030745
+19           P01031 0.012112569
+21  P06396;P06396-2 0.011919936
+34           P00751 0.019058778
+64           P08603 0.008878359
+98           P22352 0.018512294
+99           P06396 0.005681851
+101          P05156 0.032024852
+
+
+## Association between serum metabolites and liver fat (steatosis)
+
+Perform multiple linear regression analyses for each metabolite to identify
+those with significant differences in abundances between steatosis categories.
+
+Model setup with "estim_daily_nutr_intake" and "pdi_score" in addition:
+as estim is all coef=0, rm and keep only pdi_score. this can be compared with 
+the model in "NAFLD_steatosis_associations.html" 
+
+```{r define-lm-covariates-and-target}
+print('covariates of the linear regression model:')
+COVARIATES <- c("Sex", "Age_10", "pdi_score")
+print(COVARIATES)
+
+print('target of the linear regression model:')
+TARGET <- 'liver_fat_cat1'
+print(TARGET)
+
+DATASET <- 'NAFLD'
+print(paste0('final variables of the ', DATASET, ' dataset used:'))
+
+print('nr of variables inspected:')
+print(length(metabolites))
+
+print('nr of individuals inspected:')
+print(nrow(gal_met_prot_data))
+```
+
+Linear regression models are fitted for all metabolites separately (as a
+response) with sex, age and the (categorical) steatosis category as a
+covariates.
+
+Model coefficients and p-values are provided. Raw p-values are adjusted for
+multiple hypothesis testing with the method from Benjamini & Hochberg.
+
+```{r linear model, message=FALSE}
+
+#' Fit linear models and extract coefficients and p-values on each protein
+lm_output <- lapply(metabolites, FUN = funForLinReg,
+                    data = gal_met_prot_data) |>
+    do.call(what = rbind)
+
+#' Adjust p-values for multiple hypothesis testing
+adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
+              MARGIN = 2, p.adjust, method = "BH")
+colnames(adjp) <- sub("value", "adj", colnames(adjp))
+lm_output <- cbind(lm_output, adjp)
+```
+
+Next we calculate the effect sizes.
+
+To obtain comparable coefficients, prior to linear modelling all the metabolites
+are standardized to zero mean and unit variance (note that this does not
+influence the linear models since they are affine equivariant). In such
+autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
+parameter will be called "effect size" and will be use to evaluate group
+differences.
+
+```{r effectsize, message=FALSE}
+#' Perform autoscaling for effect size (es) calculation
+gal_met_prot_data_scaled <- gal_met_prot_data
+gal_met_prot_data_scaled[, metabolites] <- gal_met_prot_data[, metabolites] |>
+    as.matrix() |>
+    scale(scale = TRUE)
+
+#' fit linear models and extract the coefficients
+es <- lapply(metabolites, FUN = funForLinReg,
+             data = gal_met_prot_data_scaled) |>
+    do.call(what = rbind)
+es <- es[, grep("coef", colnames(es))]
+colnames(es) <- sub("coef", "effectSize", colnames(es))
+lm_output <- cbind(lm_output, es)
+```
+
+To call a metabolites *significant* we consider, in addition to the
+*statistical* significance levels also the magnitude of its coefficient,
+relative to the coefficient of variation (CV) for that protein. The CV,
+calculated on study-internal QC samples (pools of all samples) are a measure of
+the technical noise specific for that protein in the present data set. Thus,
+with this method we prioritize metabolites with a larger difference between the
+observed (biological) difference and the (separately estimated) technical
+variance.
+
+Below we add thus evaluate for each protein and comparison whether it
+fulfills that criteria.
+
+```{r define significance criteria}
+#' define the different coefficients as comparisons
+comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
+
+#' define which metabolites are considered statistically significant
+sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
+colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
+#colSums(sign_p)
+
+#' Convert the (absolute) difference in abundance into a difference in
+#' percentage based on a (log2) coefficient.
+diff_percentage <- function(x) {
+    (2^abs(x) - 1) * 100
+}
+diff_perc <- apply(lm_output[, comps], MARGIN = 2, diff_percentage)
+colnames(diff_perc) <- sub("coef", "diff_perc", colnames(diff_perc))
+
+#' Define for which metabolites the difference in concentration is larger
+#' than a certain proportion of the CV
+cv_cut <- lapply(comps, function(z) {
+    z <- sub("coef_", "", z)
+    diff_perc[, paste0("diff_perc_", z)] > 50 *  ##after eval, set to 50
+        met_ann[metabolites, "cv_qc_chris"]
+}) |>
+    do.call(what = cbind)
+colnames(cv_cut) <- sub("coef_", "cv_cut_", comps)
+
+#' Use statistical significance for non-categorical traits instead of bool
+sign_cv <- sign_p & cv_cut
+sign_cv[, "significant_Age_10"] <- sign_p[, "significant_Age_10"]
+
+#' Combine with result from linear model converting to a data.frame to
+#' avoid logicals being converted to numeric
+lm_output <- data.frame(lm_output, sign_cv)
+```
+
+The number of metabolites called significant or with an adjusted p-value smaller
+than 0.05 for each of the extracted coefficients are shown below. For a complete
+comparison, the number of metabolites complying to either the adjusted p value
+or either the CV-value, as single threshold criteria, are calculated and
+summarized here as well.
+
+```{r table-sig, results = "asis"}
+#' merge to p-adj to cv significance summary
+sig_tab <- data.frame(
+    `p_adj < 0.05` = colSums(sign_p),
+    `cv thresh` = colSums(cv_cut),
+    significant = colSums(lm_output[, sub("coef_", "significant_", comps)]),
+    check.names = FALSE)
+
+pandoc.table(
+    sig_tab, style = "rmarkdown",
+    caption = paste0("Number of significant metabolites per tested covariate. ",
+                     " *p_adj < 0.05*: number of statistically significant",
+                     " metabolites.",
+                     " *cv*: number of metabolites with percentage abundance",
+                     " difference above the CV-based threshold.",
+                     " *significant*: number of metabolites that fulfill ",
+                     "the CV-based criteria in addition to the p-adj. threshold"))
+```
+
+Export results for inspection:
+
+```{r export-results}
+results_met <- data.frame(
+    met_ann[rownames(lm_output), c("analyte_name", "analyte_class",
+                                   "biochemical_name", "cv_qc_chris")],
+    lm_output,
+    diff_perc
+)
+
+#' write to file for manual inspection,
+#' inclusing inspection of the CV-value of each protein
+handle <- file.path(RDATA_PATH, 'lm_output_results_metabolites.txt')
+write.table(results_met, file=handle, sep ="\t",
+            row.names = FALSE, col.names = TRUE)
+```
+
+The full results are shown below.
+
+```{r, eval = TRUE}
+keep <- grepl("analyte_name|coef|p.adj", colnames(results_met))
+tmp <- results_met[, keep]
+datatable(tmp) |>
+    formatRound(columns = which(vapply(tmp, is.numeric, logical(1))),
+                digits = 3)
+```
+
+We visualize the associations in a heatmap. The effect size are added for the
+associations, for the significant metabolites (min 1 significance to
+covariate). also for the not significant associations, the effect size is shown.
+
+```{r met-heatmap, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for metabolites with at least one significant association."}
+#' Extract effect sizes
+es_results <- results_met[, grep("effectSize_", colnames(results_met))] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results <- results_met[, grep("significant_", colnames(results_met))] |>
+    as.matrix()
+es_results <- es_results[rowSums(sig_results) > 0, ]
+print('nr of metabolites with >= 1 significant association:')
+nrow(es_results)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((es_results)), method = "ward.D")
+clust2 <- hclust(dist(t(es_results)), method = "ward.D")
+
+#' clean roundup nrs for plot
+es_results[es_results == 0] <- NA
+es_results <- round(es_results, 2)
+
+#' info regarding FIB4
+#print('nr of metabolites with a not-zero effect size in the FIB4 group:')
+#sum(es_results[, 'effectSize_FIB4'] != 0)
+
+#' in long format
+es_results_long <- melt(as.matrix(es_results))
+
+#' ggplot
+plt <- es_results_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Effect Size") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 2.5) +
+    theme_classic() +
+    scale_x_discrete(
+        expand = c(0, 0), limits = colnames(es_results)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(es_results)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
+          axis.text.y = element_text(hjust = 1, size = 8),
+          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "protein_SLDtypes_effect_sizes.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+```
+
+In second plot, only the significant effect size labels were added to the
+heat map. also, the dendograms after hierarchical clustering are shown.
+
+```{r met-heatmap2, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+#' keep just the effect sizes of the significant associations
+es_results_sig <- es_results
+es_results_sig[as.matrix(sig_results)[rownames(es_results), ] == 0] <- ""
+
+#' plot
+colnames(es_results) <- sub("effectSize_", "", colnames(es_results))
+pheatmap(es_results, display_numbers = es_results_sig,
+         number_color = "#444444", fontsize_number = 7)
+```
+
+In the third heat map, we plot the coefficients of molecules with >= 1
+significant association in the comparisons of naab13_cat1:
+
+```{r metabolites-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
+
+#' Extract coefficients
+coef_results_met <- results_met[, grep("coef_", colnames(results_met))] |>
+    as.matrix()
+
+#' drop sex, age
+coef_results_met <- coef_results_met[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
+    as.matrix()
+
+#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
+sig_results_met <- results_met[, c("significant_liver_fat_cat12", "significant_liver_fat_cat13", "significant_liver_fat_cat14")] |>
+    as.matrix()
+coef_results_met <- coef_results_met[rowSums(sig_results_met) > 0, ]
+print('nr of proteins with >= 1 significant association:')
+nrow(coef_results_met)
+
+#' hierarchical clustering
+clust1 <- hclust(dist((coef_results_met)), method = "ward.D")
+clust2 <- hclust(dist(t(coef_results_met)), method = "ward.D")
+
+#' clean roundup nrs for plot
+coef_results_met[coef_results_met == 0] <- NA
+coef_results_met <- round(coef_results_met, 2)
+
+#' in long format
+coef_results_met_long <- melt(as.matrix(coef_results_met))
+
+#' ggplot
+plt <- coef_results_met_long |>
+    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    geom_tile() +
+    labs(x = NULL, y = NULL, fill = "Coefficient") +
+    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
+    geom_text(size = 1.5) +
+    theme_classic() +
+    #scale_x_discrete(
+    #    expand = c(0, 0), limits = colnames(coef_results_met)[clust2$order]) +
+    scale_y_discrete(
+        expand = c(0, 0), limits = rownames(coef_results_met)[clust1$order]) +
+    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 5),
+          axis.text.y = element_text(hjust = 1, size = 5),
+          plot.margin = margin(t = 5, l = 145, r = 145, b = 5), #top left right bottom 
+          legend.position = "none")
+
+ggsave(paste0(IMAGE_PATH, "metab_naab13cat1_HMcoef.png"),
+       plot = plt, dpi = 600, width = 12,
+       height = 12, units = "cm", scale = 2.5)
+plt
+
+
+#' keep just the Coefficients of the significant associations
+coef_results_met_sig <- coef_results_met
+coef_results_met_sig[as.matrix(sig_results_met)[rownames(coef_results_met), ] == 0] <- ""
+
+#' plot
+#colnames(coef_results_met) <- sub("Coefficient_", "", colnames(coef_results_met))
+#pheatmap(coef_results_met, display_numbers = es_results_met_sig,
+#         number_color = "#444444", fontsize_number = 7,
+#         cluster_cols = FALSE)
+
+```
+
+We investigate the associations for MASLD, i.e. the difference in average
+concentrations between participants of SLD types *MASLD* and *none*. We show the
+results for that coefficient using a volcano plot, coloring significant
+associations in red.
+
+```{r met-FIG-volcano-steatosis, fig.path = IMAGE_PATH, fig.width = 15, fig.height = 5, fig.cap = "Volcano plots for associations of metabolites with steatosis categories."}
+par(mfrow = c(1, 3))
+xl <- range(results_met[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13",
+                            "coef_liver_fat_cat14")])
+yl <- c(0, -log10(min(results_met[, c("p.adj_liver_fat_cat12",
+                                      "p.adj_liver_fat_cat13",
+                                      "p.adj_liver_fat_cat14")])))
+sigs <- results_met$significant_liver_fat_cat12 |
+    results_met$significant_liver_fat_cat13 |
+    results_met$significant_liver_fat_cat14
+
+plot_volcano(results_met, "liver_fat_cat12", main = "Category 2",
+             xlim = xl, ylim = yl)
+points(results_met$coef_liver_fat_cat12[sigs],
+       -log10(results_met$p.adj_liver_fat_cat12[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+plot_volcano(results_met, "liver_fat_cat13", main = "Category 3",
+             xlim = xl, ylim = yl)
+points(results_met$coef_liver_fat_cat13[sigs],
+       -log10(results_met$p.adj_liver_fat_cat13[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+plot_volcano(results_met, "liver_fat_cat14", main = "Category 4",
+             xlim = xl, ylim = yl)
+points(results_met$coef_liver_fat_cat14[sigs],
+       -log10(results_met$p.adj_liver_fat_cat14[sigs]),
+       pch= 21, col = "#E41A1CCE", bg = "#E41A1C40")
+grid()
+abline(h = -log10(0.05), lty = 2, col = "grey")
+```
+
+Similar to the proteomics analysis, significance of difference in abundance
+increases. For metabolites we see however a large number of significant
+metabolites for the comparison between steatosis grade 3 and 1.
+
+Metabolites with significant different abundance for at least one steatosis
+grade class are shown below.
+
+```{r, results = "asis", echo = FALSE}
+tmp <- results_met[sigs, c("analyte_name",
+                           "coef_SexMale", "p.adj_SexMale",
+                           "coef_Age_10", "p.adj_Age_10",
+                           "coef_liver_fat_cat12", "p.adj_liver_fat_cat12",
+                           "coef_liver_fat_cat13", "p.adj_liver_fat_cat13",
+                           "coef_liver_fat_cat14", "p.adj_liver_fat_cat14")]
+tmp <- tmp[order(tmp$p.adj_liver_fat_cat14), ]
+
+pandoc.table(
+    tmp, style = "rmarkdown", split.table = Inf,
+    caption = paste0("Metabolites significantly associated with at least ",
+                     "on steatosis category"))
+```
+
+Significant metabolites associated with steatosis (top 5 strongest associated
+metabolites) are visualized below. Points are colored according to sample sex.
+
+```{r met-lm-top1, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[1]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]  #intensities of metabolite
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r met-lm-top2, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[2]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r met-lm-top3, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[3]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r met-lm-top4, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[4]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+```{r met-lm-top5, fig.path = IMAGE_PATH, fig.width=10, fig.height=6, warning = FALSE}
+top_analyte <- rownames(tmp)[5]
+gal_met_prot_data$top_analyte <- gal_met_prot_data[, top_analyte]
+s_1 <- scatter_plot(gal_met_prot_data, aes(x = tmp_target, y = top_analyte),
+                analyte = top_analyte)
+ggplotly_or_not(s_1, PLOTLY)
+```
+
+### Summary
+
+- 45 instead of 48 metabolites are significantly changed between contrl-grade 3 
+steatosis, when adding PDI_index as covariate. 
+- 0 metabolites are significant if looking at pdi score
+
+
+### Compare LM with and without PDI covariate - scatter plot
+
+read the coeficients from model with and without
+
+```{r}
+#' load results from y ~ Sex + Age_10 + pdi_score + liver_fat_cat1
+handle <- 'data/RData/NAFLD_steatosis_foodindex_influence/lm_output_results_metabolites.txt'
+coef_with_metab <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+#head(coef_with_metab)
+
+#' load results from y ~ Sex + Age_10 + liver_fat_cat1
+handle <- 'data/RData/NAFLD_steatosis_associations/lm_output_results_metabolites.txt'
+coef_without_metab <- read.table(handle, header = TRUE, sep = "\t")  |>
+    as.data.frame()
+#head(coef_without_metab)
+
+```
+
+plot scatter
+
+```{r}
+#' scatter
+plot(coef_without_metab$coef_liver_fat_cat14, coef_with_metab$coef_liver_fat_cat14,
+     xlab = expression(coef),
+     ylab = expression(coef[+PDI]), main = "Steatosis grade 3 vs normal",
+     pch = 21, col = "#00000080", bg = "#00000040")
+
+```
+
+diff metabolites are:  lost "PC aa C42:2"   "PC ae C38:5"   "SM (OH) C22:2" "SM C20:2" 
+and won new signif: "PC aa C38:3".
+
+=> PCs and SMs are discussed, in SI. for PCs, are enough other singif (24#), 
+BUT for SMs. story changes:
+
+"The sphingolipids, two sphingomyelins (SM C16:0, SM C24:1) and one hydroxylated 
+sphingomyelin (SM(OH) C22:2) were less abundant in participants with grade 3 steatosis."
+
+FUCK: txt 50# with 3 SMs and fig2 (48#) NOT THE SAME!!!
+
+```{r}
+
+#' find the ones that are unique to coef without pdi (48)
+setdiff(coef_without_metab[coef_without_metab$significant_liver_fat_cat14, ]$analyte_name,
+        coef_with_metab[coef_with_metab$significant_liver_fat_cat14, ]$analyte_name)
+
+#' find the ones that are unique to coef without pdi (48)
+setdiff(coef_with_metab[coef_with_metab$significant_liver_fat_cat14, ]$analyte_name,
+        coef_without_metab[coef_without_metab$significant_liver_fat_cat14, ]$analyte_name)
+
+```
+
+check: 48 - 4 + 1 = 45
+
+
+### Compare LM with and without PDI covariate - LLR
+
+compare the with and without pdi covariate LMs from above. Use the log
+likelihood ratio test.
+
+```{r log-likelihood-ratio-test-metab}
+library(lmtest)
+
+#' for dataset p180 metabolites
+variables <- metabolites
+
+#' loop over all the metabolites
+pvals <- c()
+vars <- c()
+
+for (i in variables){
+  #print(i)
+
+  #analyte
+  analyte <- i
+
+  #data
+  data <- gal_met_prot_data
+  data <- data[complete.cases(data[, analyte]), ]
+  y <- data[, analyte]
+  data <- data[, c(COVARIATES,
+                   TARGET)]
+  data <- Filter(function(x) length(unique(x)) > 1, data)
+
+  #lm with
+  lm_with <- lm(y ~ Sex + Age_10 + pdi_score + liver_fat_cat1,
+                          data = data, na.action = na.omit)
+  #lm without
+  lm_without <- lm(y ~ Sex + Age_10 + liver_fat_cat1,
+                          data = data, na.action = na.omit)
+
+  #' info: https://www.statology.org/likelihood-ratio-test-in-r/
+  #' h0: both models fit data equally well
+  #' if p < 0.05, reject null hypothesis (aka a significant improvement in fit over the 1st model)
+  #perform likelihood ratio test for differences in models
+  llr <- lrtest(lm_with, lm_without)
+
+  # Extract p-value
+  p_value <- llr$`Pr(>Chisq)`[2]
+  #print(p_value)  #warning: is rounded up to 0 is very small
+
+  #' save info
+  vars <- c(vars, i)
+  pvals <- c(pvals, p_value)
+}
+
+llr_summary <- NULL
+llr_summary$variables <- vars
+llr_summary$pvals <- pvals
+llr_summary <- as.data.frame(llr_summary)
+
+```
+
+For each p-value in the llr, if p-value > 0.05, we keep the null hypothesis. 
+
+Thus, we would conclude that the model with the PDI covariate in the predictors 
+offers EQUAL fit over the model without the PDI covariate in the predictors.
+
+print the results for PDI and all proteins/metabolites that changed signif.
+Note MDG: this is ignoring FDR? so ...
+
+```{r summary-llr-test}
+#' all pvals
+#pandoc.table(llr_summary, style = "rmarkdown", split.table = Inf,
+#             caption = "P-values from likelihood ratio test")
+
+#' which protein/metab is p-value < 0.05, so does not behave same?
+tmp <- llr_summary[llr_summary$pvals < 0.05, ]
+tmp
+nrow(tmp)
+
+```
+
+7              Cit 0.046226781
+10             Gln 0.015896425
+54           C18:1 0.008621638
+71              H1 0.007293453
+73  lysoPC a C16:0 0.024924469
+76  lysoPC a C18:0 0.002862579
+78  lysoPC a C18:2 0.018601506
+81  lysoPC a C24:0 0.003209068
+84  lysoPC a C28:0 0.033155920
+96     PC aa C34:2 0.038986821
+101    PC aa C36:2 0.018815404
+102    PC aa C36:3 0.044569882
+119    PC aa C42:1 0.019636742
+120    PC aa C42:2 0.014375154
+126    PC ae C30:2 0.044524886
+131    PC ae C34:2 0.037502543
+132    PC ae C34:3 0.023542256
+133    PC ae C36:0 0.036211698
+135    PC ae C36:2 0.030447679
+136    PC ae C36:3 0.045107979
+144    PC ae C38:5 0.014668528
+146    PC ae C40:1 0.047323642
+150    PC ae C40:5 0.010551782
+152    PC ae C42:0 0.028190909
+153    PC ae C42:1 0.047619847
+154    PC ae C42:2 0.041163006
+157    PC ae C42:5 0.008117250
+161    PC ae C44:6 0.013920563
+167       SM C16:0 0.019591646
+168       SM C16:1 0.003010586
+
+
+# Nice scatter plot for SI paper
+
+We merge the 2 scatter plots to put in paper, or at least to share with Essi in
+the discussion.
+
+Export for the paper SI Table S2B:
+
+```{r FIG-scatter_PDI, fig.path = IMAGE_PATH, fig.width = 15, fig.height = 7, fig.cap = "Scatter plots for the associations with and without adding PDI as covariate."}
+#' 2 plots horizontally
+par(mfrow = c(1, 2))
+
+#' fixed limits
+xl <- range(coef_without_prot$coef_liver_fat_cat14,
+            coef_with_prot$coef_liver_fat_cat14,
+            coef_without_metab$coef_liver_fat_cat14,
+            coef_with_metab$coef_liver_fat_cat14)
+
+#' scatter with grid, abline
+plot(coef_without_prot$coef_liver_fat_cat14, coef_with_prot$coef_liver_fat_cat14,
+     xlab = expression(Coefficient),
+     ylab = expression(Coefficient_with_PDI),
+     main = "Steatosis grade 3 vs normal - Proteins",
+     xlim = xl, ylim = xl,
+     pch = 21, col = "#00000080", bg = "#00000040")
+grid()
+abline(a = 0, b = 1, lty = 2, col = "grey") #y = bx + a
+plot(coef_without_metab$coef_liver_fat_cat14, coef_with_metab$coef_liver_fat_cat14,
+     xlab = expression(Coefficient),
+     ylab = expression(Coefficient_with_PDI),
+     main = "Steatosis grade 3 vs normal - Metabolites and lipids",
+     xlim = xl, ylim = xl,
+     pch = 21, col = "#00000080", bg = "#00000040")
+grid()
+abline(a = 0, b = 1, lty = 2, col = "grey")
+
+```
+
+
+# Acknowledgments
+
+Consulted sources used as basis for code:
+
+- ~/nafld_proteo_metabolomics/NAFLD_metab_targeted_lm.Rmd
+- ~?metabo_chris_untargeted/CHRIS_lm_pos.Rmd
+- kora: CHRIS_KORA_tmetab_lm_binary.Rmd
+
+
+# Session information
+
+R packages used for the analysis:
+
+```{r}
+sessionInfo()
+```
