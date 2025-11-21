@@ -107,7 +107,6 @@ DATASET <- 'CHRIS-NAFLD, none and MASLD'
 ```{r packages, message=FALSE}
 #' Load libraries
 library(chrisUtils)
-library(chrisData)
 library(DT)
 library(ggfortify)
 library(ggplot2)
