@@ -27,7 +27,6 @@ stratify/diagnose individuals following recent clinical guidelines.
 Demographics of the NAFLD cohort and evaluation of available trait data.
 
 ```{r}
-library(chrisData)
 library(nafldData)
 library(vioplot)
 
@@ -275,34 +274,6 @@ and data from the study according to [@american_diabetes_association_2_2018]
 - OR Fasting glucose >= 126 mg/dl
 - OR Anti-diabetic medication
 
-We are loading in addition CHRIS baseline data to enable comparison of these
-values in the baseline and the NAFLD study collection.
-
-```{r, message = FALSE}
-library(chrisData)
-chris_med <- chrisData("drugs_summary")
-rownames(chris_med) <- chris_med$AID
-chris_med <- chris_med[n_data$aid_chris, ]
-
-chris_gi <- chrisData("general")
-rownames(chris_gi) <- chris_gi$AID
-chris_gi <- chris_gi[n_data$aid_chris, ]
-
-chris_int <- chrisData("interview")
-rownames(chris_int) <- chris_int$AID
-chris_int <- chris_int[n_data$aid_chris, ]
-
-chris_lab <- chrisData("labdata")
-rownames(chris_lab) <- chris_lab$AID
-chris_lab <- chris_lab[n_data$aid_chris, ]
-
-n_data$chris_dm <- chris_int$x0dm00 # self-reported diabetes diagnosis
-n_data$chris_HbA1c <- chris_lab$x0lp06a # Glycated Hemoglobin
-n_data$chris_glucose <- chris_lab$x0lp05 # fasting glucose
-n_data$chris_dia_med <- chris_med$x0dd21 # diabetes medication
-n_data$chris_sr_fasting <- chris_lab$x0bc12 # self-reported fasting
-```
-
 We next extract the same data from the NAFLD collection. We also update the
 self-reported diabetes diagnosis considering all participants that reported
 diabetes at baseline OR at NAFLD follow-up. Finally, we extract the information
@@ -321,8 +292,8 @@ lab <- nafldData("Labdata")
 rownames(lab) <- lab$AID
 lab <- lab[n_data$AID, ]
 
-#' self-reported diabetes considering also baseline
-n_data$self_dm <- n_data$chris_dm
+#' self-reported diabetes
+n_data$self_dm <- "No"
 n_data$self_dm[which(int$nadm00 == "Yes")] <- "Yes"
 n_data$HbA1c <- lab$nalp06a
 n_data$glucose <- lab$nalp05
@@ -381,26 +352,6 @@ t2d[is.na(n_data$dia_med) & no_lab] <- NA
 n_data$t2d <- t2d
 ```
 
-The same criteria are applied to CHRIS baseline samples for the NAFLD study
-participants.
-
-```{r}
-#' Diagnosing in CHRIS
-t2d <- rep(FALSE, nrow(n_data))
-
-#' Anti-diabetic medication: nadd21
-t2d[which(n_data$chris_dia_med == "Yes")] <- TRUE
-
-#' Glycated hemoglobin %: nalp06a
-t2d[which(n_data$chris_HbA1c >= 6.5)] <- TRUE
-
-#' fasting glucose: nalp05
-t2d[which(n_data$chris_glucose >= 126 &
-          n_data$chris_sr_fasting == "Yes")] <- TRUE
-
-n_data$chris_t2d <- t2d
-```
-
 Note that for two participants no glycated hemoglobin measurement was
 available: one of them was (in CHRIS baseline) diabetic and one was selected as
 control (i.e., not diabetic). According to the available medication information
@@ -430,32 +381,14 @@ as the self-reported diabetes status.
 ```{r, results = "asis"}
 data.frame(status = c("No", "Yes"),
            NAFLD_T2D = as.integer(table(n_data$t2d)),
-           CHRIS_T2D = as.integer(table(n_data$chris_t2d)),
-           NAFLD_SR_DM = as.integer(table(n_data$self_dm)),
-           CHRIS_SR_DM = as.integer(table(n_data$chris_dm))) |>
+           NAFLD_SR_DM = as.integer(table(n_data$self_dm))) |>
     pandoc.table(
         style = "rmarkdown",
         caption = paste0("Type 2 diabetes diagnosis for NAFLD study ",
                          "participants based on data from the NAFLD study ",
-                         "(NAFLD) or CHRIS baseline samples (CHRIS). ",
+                         "(NAFLD). ",
                          "Columns SR indicate self-reported diagnosis."))
 ```
-
-The number of positive cases are higher in CHRIS baseline than in the NAFLD
-study because of the different instruments/protocols that were used to quantify
-the glycated hemoglobin (HbA1c; data not shown here). Also interestingly,
-self-reported diabetes is much higher than diagnosed (type 2) diabetes in NAFLD.
-
-HbA1c measurements were conducted on blood samples for all NAFLD participants on
-a Tosoh Automated Glycohemoglobin Analyzer HLC-723 G8 (TOSOH CORPORATION
-SHIBA-KOEN FIRST BLDG) while for the measurement on blood samples from the NAFLD
-samples the ARKRAY ADAMS A1c HA-8180V instrument was used (instrument change was
-performed 2015-05-15). The HbA1c (%) measurements are systematically (slightly)
-higher with the old instrument.
-
-For the present analysis we use however the T2D diagnosis performed on the
-samples collected during the NAFLD study - for comparison with baseline data we
-will however need to normalize the values.
 
 We next evaluate distribution of age, BMI, sex etc for participants with and
 without T2D.
@@ -946,88 +879,6 @@ colnames(tmp) <- c("AID", "AID_chris", "Age", "Sex",
 write_xlsx(tmp, path = "data/masld_phenotypes.xlsx")
 
 ```
-
-
-
-# NAFLD omics data overview
-
-
-Get the IDs of NAFLD participants and their respective CHRIS AID.
-
-```{r, message = FALSE}
-library(chrisData)
-
-gi <- chrisData("general")
-
-nafld <- gi[which(gi$x0_nafld == "Yes"), ]
-```
-
-Participation year (in CHRIS baseline) for the `r nrow(nafld)` NAFLD study
-participants.
-
-```{r}
-barplot(table(nafld$x0_examy))
-```
-
-We determine the number of participants with available CHRIS targeted
-metabolomics as well as CHRIS ScanningSWATH and Somalogic proteomics data from
-the baseline and NAFLD collections.
-
-```{r, message = FALSE}
-library(tidyfr)
-soma <- data_module(name = "chris_somalogic", version = "1.0.3.2", path = ".")
-scan <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.2",
-                    path = ".")
-p180 <- data_module(name = "metabolomics_p180", version = "1.0.1.2", path = ".")
-
-soma_aid <- rownames(data(soma))
-scan_aid <- rownames(data(scan))
-p180_aid <- rownames(data(p180))
-```
-
-```{r, results = "asis"}
-library(pander)
-tmp <- data.frame(baseline = c(sum(nafld$AID %in% p180_aid),
-                               sum(nafld$AID %in% scan_aid),
-                               sum(nafld$AID %in% soma_aid)),
-                  NAFLD = c(sum(nafld$aid_nafld %in% p180_aid),
-                            sum(nafld$aid_nafld %in% scan_aid),
-                            sum(nafld$aid_nafld %in% soma_aid)))
-rownames(tmp) <- c("targeted metabolomics",
-                   "ScanningSWATH proteomics",
-                   "SomaLogic proteomics")
-pandoc.table(tmp, style = "rmarkdown",
-             caption = paste0("Number of NAFLD study participants (n = ",
-                              nrow(nafld), ") with available omics data"))
-```
-
-Note: these numbers don't include any of the drop outs up to version 2 (July
-2023).
-
-
-```{r}
-do <- read.table(system.file("txt", "drop-outs.txt", package = "chrisData"),
-                 sep = "\t", header = TRUE, colClasses = "character")
-any(do$aid %in% nafld$AID)
-any(do$aid %in% nafld$aid_nafld)
-```
-
-
-# Questions/comments
-
-- [X] DONE: check instruments between baseline and NAFLD study - was there a
-      change that could explain differences in HbA1c?
-- [X] TODO: discuss with Christoph, what is his opinion on that? Use the data
-      from NAFLD. In a clinical settings, two measurements are required for
-      diagnosis.
-- [X] TODO: how to normalize the values. No need as long as we don't compare
-      against baseline data.
-- [X] TODO: should we consider a categorical variable with CTRL, SLD, MASLD,
-      MetALD instead just a binary for MASLD?
-- [X] TODO: how to categorize potential MASLD cases without alcohol information?
-      (in total 8). According to other alcohol related information from other
-      questionnaires they are no heavy drinkers and thus added to the MASLD
-      category.
 
 
 # Session Information
