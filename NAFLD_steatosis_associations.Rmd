@@ -817,7 +817,7 @@ Only for MetS, both true/false present.
 correlation_scaledmatrix <- round(cor(met_data, use = "complete.obs", method = "spearman"), 3)
 suppressMessages(library(psych))
 Pvalues_correlation_scaledmatrix <- corr.test(met_data, use = "complete", method = "spearman", adjust = "fdr", alpha = 0.05)
-Pvalues_correlation_scaledmatrix <- round(Pvalues_correlation_scaledmatrix$p, 3)
+Pvalues_correlation_scaledmatrix <- Pvalues_correlation_scaledmatrix$p
 detach(package:psych)
 
 
@@ -1660,7 +1660,7 @@ significant association in the comparisons of naab13_cat1:
 
 This is also Figure 2B.
 
-```{r proteins-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients."}
+```{r proteins-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients.", eval = FALSE}
 
 #' Extract coefficients
 coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
@@ -1731,10 +1731,14 @@ This is also Figure 2B (2).
 
 ```{r proteins-heatmap4, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are the coeficients, with asteriks for the significants variables."}
 
-
 #' Extract coefficients
 coef_results_prot <- results_prot[, grep("coef_", colnames(results_prot))] |>
     as.matrix()
+
+#' Genes instead of uniprot IDs
+rownames(coef_results_prot) <- paste0(rownames(coef_results_prot),
+                                      "_", results_prot$Genes)
+rownames(coef_results_prot) <- sapply(strsplit(rownames(coef_results_prot), "_"), function(x) x[2])
 
 #' drop sex, age
 coef_results_prot <- coef_results_prot[, c("coef_liver_fat_cat12", "coef_liver_fat_cat13", "coef_liver_fat_cat14")] |>
