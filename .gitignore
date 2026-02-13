@@ -4,6 +4,8 @@ data/phenodata.txt
 phenodata.txt
 data/*
 chris_scanning*
+chris_somalogic*
+metabolomics_p180*
 *.RData
 *.png
 *.html
