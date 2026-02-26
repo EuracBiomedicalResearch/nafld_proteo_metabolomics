@@ -1,6 +1,6 @@
 ---
 title: "Steatosis associated metabolites, lipids and proteins"
-author: "Marilyn De Graeve, Johannes Rainer, Christoph Grander"
+author: "Marilyn De Graeve, Essi Hantikainen, Johannes Rainer, Christoph Grander"
 affiliation: "Eurac Research, Bolzano, Italy"
 graphics: yes
 output:
@@ -20,23 +20,6 @@ library("BiocStyle")
 library("kableExtra")
 library("knitr")
 library("rmarkdown")
-## knitr::knit_hooks$set(time_it = local({
-##   now <- NULL
-##   function(before, options) {
-##     if (before) {
-##       # record the current time before each chunk
-##       now <<- Sys.time()
-##     } else {
-##       # calculate the time difference after a chunk
-##       res <- difftime(Sys.time(), now, units = "secs")
-##       # return a character string to show the time
-##       paste("    Time for this code chunk to run:", round(res,
-##         2), "seconds")
-##     }
-##   }
-## }))
-## opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
-##                cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
                cache = FALSE, fig.width = 7, fig.height = 7)
 set.seed(1)
@@ -100,8 +83,7 @@ dir.create(RDATA_PATH, recursive = TRUE, showWarnings = FALSE)
 DATA_PATH <- "."
 
 
-DATASET <- 'CHRIS-NAFLD, none and MASLD'
-
+DATASET <- "CHRIS-NAFLD, none and MASLD"
 ```
 
 ## Packages
@@ -121,7 +103,6 @@ library(reshape2)
 library(tidyfr)
 library(vioplot)
 library(writexl)
-
 ```
 
 
@@ -227,8 +208,8 @@ the model, nanu006a)". This was added in the section of dietary lms.
 
 ```{r NAFLD-indices}
 #' load the NAFLD_dietary_indices_data
-handle <- file.path(DATA_PATH, 'GALAN', 'NAFLD_dietary_indices_data_Marilyn.txt')
-galan <- read.table(handle, header = TRUE, sep = "\t", dec = ",")  |>
+fl <- file.path(DATA_PATH, "GALAN", "NAFLD_dietary_indices_data_Marilyn.txt")
+galan <- read.table(fl, header = TRUE, sep = "\t", dec = ",")  |>
     as.data.frame()
 rownames(galan) <- paste0("00", as.character(galan$AID))
 
@@ -327,11 +308,6 @@ met_prot_data <- as.data.frame(met_prot_data)
 rownames(met_prot_data) <- met_prot_data$AID
 gal_met_prot_data <- merge(met_prot_data, galan, by = "AID")
 rownames(gal_met_prot_data) <- gal_met_prot_data$AID
-
-#' write to file for manuel inspection
-handle <- 'data/gal_met_prot_data.txt'
-write.table(gal_met_prot_data, file = handle, sep = "\t",
-            row.names = FALSE, col.names = TRUE)
 ```
 
 All data sets are subset to `r length(AIDs)` study participants.
@@ -780,35 +756,39 @@ proteins with the liver fat categories.
 
 ## Association liver fat (steatosis) with diet
 
-We perform linear regression analyses to evaluate whether there are
-differences in dietary habits between the liver fat categories.
-
-Feedback from Essi: load food indices and summarized food groups (eg pizza),
-and include the "estimated daily nutrient intake" as additional covariate.
+We perform linear regression analyses to evaluate whether there are differences
+in dietary habits between the liver fat categories. We first test associations
+for the macronutrients and later test for association with the PDI for adherence
+for a healthy plant based diet. For the diet associations we need to adjust in
+addition for the estimated daily nutrient intake, which we add as a covariate to
+the models.
 
 ```{r}
 library(nafldData)
-#need this one
-#nafldAnn['nanu006a', ]   #Estimated daily nutrient intake
+#' need this one
+#' nafldAnn['nanu006a', ]   #Estimated daily nutrient intake
 
 ffq <- nafldData("FFQ")
 rownames(ffq) <- ffq$AID
 
-gal_met_prot_data$estim_daily_nutr_intake <- ffq[rownames(gal_met_prot_data), 'nanu006a']
-
+gal_met_prot_data$estim_daily_nutr_intake <-
+    ffq[rownames(gal_met_prot_data), 'nanu006a']
 ```
 
-Next feedback: remove food groups, keep the macronutrients only.
-Afterwards, keep only PDI and run again, no adj p-value.
-Also, for the heatmap plot, can run macronutrients + PDI.
+We next define the macronutrients for which we test for associations. These were
+generated from the GA2LEN FFQ data. The same model is fitted to the PDI score,
+but this is evaluated separately from the macronutrients results.
 
 ```{r}
 #' selection of diet items of interest
-print(ffq_items)
-ffq_items <- c("protein", "total_fat",
-               "total_carbs", "saturated_fatty_acids",
-               "monounsaturated_fatty_acids", "polyunsaturated_fatty_acids",
-               "trans_fatty_acids")
+ffq_items <- c("protein",
+               "total_fat",
+               "total_carbs",
+               "saturated_fatty_acids",
+               "monounsaturated_fatty_acids",
+               "polyunsaturated_fatty_acids",
+               "trans_fatty_acids",
+               "pdi_score")
 
 #' selection for the run with 1 indices, ran manual
 #ffq_items <- "pdi_score"
@@ -827,35 +807,29 @@ print(ffq_items)
 linear models setup:
 
 ```{r define-lm-covariates-and-target-diet}
-print('covariates of the linear regression model:')
 COVARIATES <- c("Sex", "Age_10", "estim_daily_nutr_intake")
+TARGET <- "liver_fat_cat"
+
+print("Covariates of the linear regression model:")
 print(COVARIATES)
 
-print('target of the linear regression model:')
-TARGET <- 'liver_fat_cat'
-print("liver_fat_cat")
+print("Target of the linear regression model:")
+print(TARGET)
 
-DATASET <- 'NAFLD'
-print(paste0('final variables of the ', DATASET, ' dataset used:'))
+DATASET <- "NAFLD"
+print(paste0("final variables of the ", DATASET, " dataset used:"))
 
-print('nr of variables inspected:')
+print("nr of variables:")
 print(length(ffq_items))
 
-print('nr of individuals inspected:')
+print("nr of individuals:")
 print(nrow(gal_met_prot_data))
-
 ```
-
-To identify ffq_items related with the 2 (none, MASLD) of the 4 SLD types (none,
-MASLD, MetALD, SLD), seperate linear regression models are fitted for all
-ffq_items separately (as a response) with sex, age and the steatosis categories
-as explanatory variables.
 
 Model coefficients and p-values are provided. Raw p-values are adjusted for
 multiple hypothesis testing with the method from Benjamini & Hochberg.
 
 ```{r linear model-diet with CIs, message=FALSE}
-
 #' Define a function to fit the linear model:
 #' - fit the linear model
 #' - extract the coefficients and p-values skipping the intercept
@@ -864,43 +838,15 @@ multiple hypothesis testing with the method from Benjamini & Hochberg.
 funForLinReg <- function(analyte, data) {
     y <- data[, analyte]
     data <- data[, c(COVARIATES, TARGET)]
-    res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
+    l <- lm(y ~ ., data = data)
+    res <- coef(summary(l))[-1, ]
     pvals <- matrix(c(res[, 1L], res[, 4L]), nrow = 1)
     rownames(pvals) <- analyte
     colnames(pvals) <- c(paste0("coef_", rownames(res)),
-                         paste0("p-value_", rownames(res)))
+                         paste0("p-value_", rownames(res))
+                         )
     pvals
 }
-
-#' tests
-#gal_met_prot_data[1:5, c("Sex", "Age", "FIB4")]
-#gal_met_prot_data[1:5, ffq_items[1]]
-#data <- gal_met_prot_data
-#analyte <- ffq_items[1]
-#funForLinReg(analyte, gal_met_prot_data)
-#analyte <- ffq_items[14]
-#funForLinReg(analyte, gal_met_prot_data)
-#for (analyte in ffq_items) {
-#  print(analyte)
-#  funForLinReg(analyte, gal_met_prot_data)
-#}
-
-#' Fit linear models and extract coefficients and p-values on each protein
-lm_output <- lapply(ffq_items, FUN = funForLinReg, data = gal_met_prot_data) |>
-    do.call(what = rbind)
-
-#' Adjust p-values for multiple hypothesis testing
-adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
-              MARGIN = 2, p.adjust, method = "BH")
-colnames(adjp) <- sub("value", "adj", colnames(adjp))
-lm_output <- cbind(lm_output, adjp)
-
-```
-
-Add confidence intervals reorting in the LM for the not-significant dietary
-intake variables. keep R chunk above for the next lms (proteins, metabolites).
-
-```{r lm-with-CIs-diet}
 
 #' Define a function to fit the linear model:
 #' - fit the linear model
@@ -911,8 +857,9 @@ intake variables. keep R chunk above for the next lms (proteins, metabolites).
 funForLinReg_CIs <- function(analyte, data) {
     y <- data[, analyte]
     data <- data[, c(COVARIATES, TARGET)]
-    res <- coef(summary(lm(y ~ ., data = data)))[-1, ]
-    CIs <- confint(lm(y ~ ., data = data))[-1, ]
+    l <- lm(y ~ ., data = data)
+    res <- coef(summary(l))[-1, ]
+    CIs <- confint(l)[-1, ]
     pvals <- matrix(c(res[, 1L], res[, 4L], CIs[, 1L], CIs[, 2L]), nrow = 1)
     rownames(pvals) <- analyte
     colnames(pvals) <- c(paste0("coef_", rownames(res)),
@@ -923,13 +870,13 @@ funForLinReg_CIs <- function(analyte, data) {
     pvals
 }
 
-#data <- gal_met_prot_data
-#analyte <- ffq_items[1]
-#funForLinReg_CIs(analyte, gal_met_prot_data)
-
 #' Fit linear models and extract coefficients and p-values on each protein
-lm_output <- lapply(ffq_items, FUN = funForLinReg_CIs, data = gal_met_prot_data) |>
+lm_output <- lapply(ffq_items, funForLinReg_CIs, data = gal_met_prot_data) |>
     do.call(what = rbind)
+
+#' Separate the PDI results.
+lm_pdi <- lm_output["pdi_score", , drop = FALSE]
+lm_output <- lm_output[rownames(lm_output) != "pdi_score", ]
 
 #' Adjust p-values for multiple hypothesis testing
 adjp <- apply(lm_output[, grep("p-value", colnames(lm_output))],
@@ -945,7 +892,7 @@ To obtain comparable coefficients, prior to linear modelling all the ffq_items
 are standardized to zero mean and unit variance (note that this does not
 influence the linear models since they are affine equivariant). In such
 autoscaled data, difference of 1 corresponds to a standard deviation of 1. This
-parameter will be called "effect size" and will be use to evaluate group
+parameter will be called *effect size* and will be use to evaluate group
 differences.
 
 ```{r effectsize-diet, message=FALSE}
@@ -960,7 +907,10 @@ es <- lapply(ffq_items, FUN = funForLinReg, data = gal_met_prot_data_scaled) |>
     do.call(what = rbind)
 es <- es[, grep("coef", colnames(es))]
 colnames(es) <- sub("coef", "effectSize", colnames(es))
-lm_output <- cbind(lm_output, es)
+
+lm_pdi <- data.frame(lm_pdi, es["pdi_score", , drop = FALSE])
+
+lm_output <- cbind(lm_output, es[rownames(es) != "pdi_score", ])
 ```
 
 For diet, we can not have cv-based cut-off, therefore, we use "just" the
@@ -973,7 +923,6 @@ comps <- colnames(lm_output)[grep("coef", colnames(lm_output))]
 #' define which ffq_items are considered statistically significant
 sign_p <- lm_output[, grep("p-adj", colnames(lm_output))] < 0.05
 colnames(sign_p) <- sub("p-adj_", "significant_", colnames(sign_p))
-#colSums(sign_p)
 
 #' Combine with result from linear model converting to a data.frame to
 #' avoid logicals being converted to numeric
@@ -1008,37 +957,40 @@ lm_output$CI_range_fat_cat4 <- paste0(
     "]"
 )
 
-#we want, for each variable, to see if the CI is not zero (for singif difference variables).
-lm_output$CI_No_0_liver_fat_cat4 <-((lm_output$CI_lower_liver_fat_cat4 > 0 & lm_output$CI_upper_liver_fat_cat4 > 0) | (lm_output$CI_lower_liver_fat_cat4 < 0 & lm_output$CI_upper_liver_fat_cat4 < 0)) #returns true if CI NOT in 0, wanted to find 'sign' different vars!
+#' we want, for each variable, to see if the CI is not zero (for singif
+#' difference variables).
+lm_output$CI_No_0_liver_fat_cat4 <-((lm_output$CI_lower_liver_fat_cat4 > 0 &
+                                     lm_output$CI_upper_liver_fat_cat4 > 0) |
+                                    (lm_output$CI_lower_liver_fat_cat4 < 0 &
+                                     lm_output$CI_upper_liver_fat_cat4 < 0))
+#' returns true if CI NOT in 0, wanted to find 'sign' different vars!
 
 #' nice explain:
 #' https://www.econometrics-with-r.org/5.2-cifrc.html
-#' if the interval [CI_lower, CI_upper] does not contain the value zero, this leads to the rejection of the null hypothesis β1,0=0.
+#' if the interval [CI_lower, CI_upper] does not contain the value zero,
+#' this leads to the rejection of the null hypothesis β1,0=0.
 #' A Confidence Interval for βi
-#' Imagine you could draw all possible random samples of given size. The interval that contains the true value βi in 95%
-#' of all samples is given by the expression
-#' CIβi0.95=[^βi−1.96×SE(^βi),^βi+1.96×SE(^βi)].
-#' Equivalently, this interval can be seen as the set of null hypotheses for which a 5% two-sided hypothesis test does not reject.
+#' Imagine you could draw all possible random samples of given size. The
+#' interval that contains the true value βi in 95% of all samples is given
+#' by the expression CIβi0.95=[^βi−1.96×SE(^βi),^βi+1.96×SE(^βi)].
+#' Equivalently, this interval can be seen as the set of null hypotheses for
+#' which a 5% two-sided hypothesis test does not reject.
 
-```
-
-Export results for inspection:
-
-```{r export-results-diet}
-results_diet <- data.frame(
-    #kora_ann[rownames(lm_output), c("domain", "name")],  #with indices essi, info NA
-    lm_output
-)
-#' write to file for manual inspection,
-#' inclusing inspection of the CV-value of each protein
-handle <- file.path(RDATA_PATH, 'lm_output_results_ffq_items-macronutrients.txt')
-write.table(results_diet, file = handle, sep = "\t", row.names = FALSE,
-            col.names = TRUE)
 ```
 
 ```{r, eval = TRUE}
-rem <- grepl("effect|significant|p.value|CI", colnames(results_diet))
+rem <- grepl("effect|significant|p.value", colnames(results_diet))
 tmp <- results_diet[, !rem]
+datatable(tmp) |>
+    formatRound(columns = which(vapply(tmp, is.numeric, logical(1))),
+                digits = 3)
+```
+
+The results for the PDI score:
+
+```{r, eval = TRUE}
+rem <- grepl("effect|significant", colnames(lm_pdi))
+tmp <- lm_pdi[, !rem, drop = FALSE]
 datatable(tmp) |>
     formatRound(columns = which(vapply(tmp, is.numeric, logical(1))),
                 digits = 3)
@@ -1048,95 +1000,30 @@ We visualize the associations in a heatmap. The effect size are added for the
 associations, for the significant ffq_items (min 1 significance to
 covariate). also for the not significant associations, the effect size is shown.
 
-```{r heatmap-diet, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for ffq_items with at least one significant association."}
-#' Extract effect sizes
-es_results <- results_diet[, grep("coef_", colnames(results_diet))] |>
-    as.matrix()
-
-#' Restrict to those significant for at least one of the groups (sex, age, SLD type)
-sig_results <- results_diet[, grep("significant_", colnames(results_diet))] |>
-    as.matrix()
-es_results <- es_results[rowSums(sig_results) > 0, ]
-print('nr of ffq_items with >= 1 significant association:')
-nrow(es_results)
-
-#' hierarchical clustering
-clust1 <- hclust(dist((es_results)), method = "ward.D")
-clust2 <- hclust(dist(t(es_results)), method = "ward.D")
-
-#' clean roundup nrs for plot
-es_results[es_results == 0] <- NA
-es_results <- round(es_results, 2)
-
-#' info regarding FIB4
-#print('nr of ffq_items with a not-zero effect size in the FIB4 group:')
-#sum(es_results[, 'effectSize_FIB4'] != 0)
-
-#' in long format
-es_results_long <- melt(as.matrix(es_results))
-
-#' ggplot
-plt <- es_results_long |>
-    ggplot(aes(Var2, Var1, fill = value, label = value)) +
-    geom_tile() +
-    labs(x = NULL, y = NULL, fill = "Effect Size") +
-    scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
-    geom_text(size = 2.5) +
-    theme_classic() +
-    scale_x_discrete(
-        expand = c(0, 0), limits = colnames(es_results)[clust2$order]) +
-    scale_y_discrete(
-        expand = c(0, 0), limits = rownames(es_results)[clust1$order]) +
-    theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
-          axis.text.y = element_text(hjust = 1, size = 8),
-          plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
-          legend.position = "none")
-
-ggsave(paste0(IMAGE_PATH, "protein_SLDtypes_effect_sizes.png"),
-       plot = plt, dpi = 600, width = 12,
-       height = 12, units = "cm", scale = 2.5)
-plt
-
-```
-
-In second plot, only the significant effect size labels were added to the
-heat map. also, the dendograms after hierarchical clustering are shown.
-
-```{r heatmap2-diet, fig.width = 14, fig.height = 14, fig.cap = "Associations between covariates. Shown are the effect size for the associations, for significant associations the value of the effect size is shown."}
-#' keep just the effect sizes of the significant associations
-es_results_sig <- es_results
-for (i in colnames(es_results_sig)) {
-    es_results_sig[!results_diet[rownames(es_results_sig),
-                                 sub("coef", "significant", i)], i] <- ""
-}
-#' plot
-colnames(es_results_sig) <- sub("coef_", "", colnames(es_results_sig))
-pheatmap(es_results, display_numbers = es_results_sig,
-         number_color = "#444444", fontsize_number = 7)
-
-```
-
-In the third heat map, we plot the coefficients of molecules with >= 1
-significant association in the comparisons of naab13_cat:
-
-This is also Figure S2 (edit in ppt to merge macro + PDI into 1 figure).
-
-```{r diet-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between covariates. Shown are coeficients"}
-
+```{r diet-heatmap3, fig.path = IMAGE_PATH, res = 150, fig.cap = "Associations between diet related variables and liver steatosis grades. Shown are coefficients."}
 #' Extract coefficients
 coef_results_diet <- results_diet[, grep("coef_", colnames(results_diet))] |>
     as.matrix()
 
+coef_results_diet <- rbind(
+    coef_results_diet,
+    PDI = lm_pdi[, grep("coef_", colnames(results_diet))])
+
 #' drop sex, age
-coef_results_diet <- coef_results_diet[, c("coef_liver_fat_cat2", "coef_liver_fat_cat3", "coef_liver_fat_cat4")] |>
-    as.matrix()
+coef_results_diet <- coef_results_diet[, grep("liver",
+                                              colnames(coef_results_diet))]
 
 #' DO NOT Restrict to those significant for at least one of the groups (sex, age, SLD type)
-sig_results_diet <- results_diet[, c("significant_liver_fat_cat2", "significant_liver_fat_cat3", "significant_liver_fat_cat4")] |>
+sig_results_diet <- results_diet[, c("significant_liver_fat_cat2",
+                                     "significant_liver_fat_cat3",
+                                     "significant_liver_fat_cat4")] |>
     as.matrix()
-#coef_results_diet <- coef_results_diet[rowSums(sig_results_diet) > 0, ] #keep all
-print('nr of proteins with >= 1 significant association:')
-nrow(coef_results_diet)
+sig_results_diet <- rbind(
+    sig_results_diet,
+    PDI = c(lm_pdi$p.value_liver_fat_cat2 < 0.05,
+            lm_pdi$p.value_liver_fat_cat3 < 0.05,
+            lm_pdi$p.value_liver_fat_cat4 < 0.05))
+
 
 #' hierarchical clustering
 clust1 <- hclust(dist((coef_results_diet)), method = "ward.D")
@@ -1149,9 +1036,14 @@ coef_results_diet <- round(coef_results_diet, 2)
 #' in long format
 coef_results_diet_long <- melt(as.matrix(coef_results_diet))
 
+#' only show significant coefficient.
+tmp <- melt(as.matrix(sig_results_diet))
+coef_results_diet_long$label <- coef_results_diet_long$value
+coef_results_diet_long$label[!tmp$value] <- ""
+
 #' ggplot
 plt <- coef_results_diet_long |>
-    ggplot(aes(Var2, Var1, fill = value, label = value)) +
+    ggplot(aes(Var2, Var1, fill = value, label = label)) +
     geom_tile() +
     labs(x = NULL, y = NULL, fill = "Coefficient") +
     scale_fill_gradient2(mid = "#FBFEF9", low = "#0C6291", high = "#A63446") +
@@ -1164,36 +1056,18 @@ plt <- coef_results_diet_long |>
     theme(axis.text.x = element_text(angle = 20, hjust = 1, size = 10),
           axis.text.y = element_text(hjust = 1, size = 8),
           plot.margin = margin(t = 5, l = 45, r = 5, b = 5),
-          legend.position = "none")
-
+          legend.position = "right")
+plt
 #ggsave(paste0(IMAGE_PATH, "diet_naab13cat1_HMcoef.png"),
 #       plot = plt, dpi = 600, width = 12,
 #       height = 12, units = "cm", scale = 2.5)
 #plt  #0 singificant
 
-
-#' keep just the Coefficients of the significant associations
-#coef_results_diet_sig <- coef_results_diet
-#coef_results_diet_sig[as.matrix(sig_results_diet)[rownames(coef_results_diet), ] == 0] <- ""
-
-#' plot
-#colnames(coef_results_diet) <- sub("Coefficient_", "", colnames(coef_results_diet))
-#pheatmap(coef_results_diet, display_numbers = es_results_diet_sig,
-#         number_color = "#444444", fontsize_number = 7,
-#         cluster_cols = FALSE)
-
 ```
-
-A considerable number of ffq_items are significant both for sex and age,
-in many cases even with the same sign.
-
 
 ### Summary
 
-- Strong age and sex differences.
-- No food item is significantly different between the steatosis categories.
-- There are food items with relatively large coefficient, but not significant.
-
+- Only PDI score is significant.
 
 ## Association between circulating proteins and liver fat (steatosis)
 
@@ -1350,11 +1224,6 @@ results_prot <- data.frame(
     lm_output,
     diff_perc
 )
-
-#' inclusing inspection of the CV-value of each protein
-handle <- file.path(RDATA_PATH, 'lm_output_results_proteins.txt')
-write.table(results_prot, file=handle, sep ="\t",
-            row.names = FALSE, col.names = TRUE)
 ```
 
 Export for the paper SI Table S1:
@@ -1943,12 +1812,6 @@ results_met <- data.frame(
     lm_output,
     diff_perc
 )
-
-#' write to file for manual inspection,
-#' inclusing inspection of the CV-value of each protein
-handle <- file.path(RDATA_PATH, 'lm_output_results_metabolites.txt')
-write.table(results_met, file=handle, sep ="\t",
-            row.names = FALSE, col.names = TRUE)
 ```
 
 Export for the paper SI Table S2:
