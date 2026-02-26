@@ -20,23 +20,25 @@ library("BiocStyle")
 library("kableExtra")
 library("knitr")
 library("rmarkdown")
-knitr::knit_hooks$set(time_it = local({
-  now <- NULL
-  function(before, options) {
-    if (before) {
-      # record the current time before each chunk
-      now <<- Sys.time()
-    } else {
-      # calculate the time difference after a chunk
-      res <- difftime(Sys.time(), now, units = "secs")
-      # return a character string to show the time
-      paste("    Time for this code chunk to run:", round(res,
-        2), "seconds")
-    }
-  }
-}))
+## knitr::knit_hooks$set(time_it = local({
+##   now <- NULL
+##   function(before, options) {
+##     if (before) {
+##       # record the current time before each chunk
+##       now <<- Sys.time()
+##     } else {
+##       # calculate the time difference after a chunk
+##       res <- difftime(Sys.time(), now, units = "secs")
+##       # return a character string to show the time
+##       paste("    Time for this code chunk to run:", round(res,
+##         2), "seconds")
+##     }
+##   }
+## }))
+## opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+##                cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
 opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
-               cache = FALSE, fig.width = 7, fig.height = 7, time_it = TRUE)
+               cache = FALSE, fig.width = 7, fig.height = 7)
 set.seed(1)
 ```
 
@@ -123,7 +125,7 @@ library(writexl)
 ```
 
 
-# Data import
+# Data preparation and setup
 
 ## Circulating proteins (tprot) dataset (Scanning SWATH)
 
@@ -147,7 +149,6 @@ proteins <- rownames(prot_ann)[prot_ann$Genes != ""]
 
 #' select proteins dataframe
 prot_data <- prot_data[, proteins]
-
 ```
 
 The loaded data contains the samples as rows, and the protein names as
@@ -164,7 +165,6 @@ are:
 prot_data <- prot_data[grep("^008", rownames(prot_data)), ]
 dim(prot_data)
 ```
-
 
 ## Targeted metabolomics (tmetab) dataset (Biocrates p180 kit)
 
@@ -215,17 +215,15 @@ met_data <- met_data[grep("^008", rownames(met_data)), ]
 dim(met_data)
 ```
 
-
 ## Diet GA2LEN data
 
 Dietary information, i.e. GA2LEN food frequency questionaires, from the MASLD
 study were loaded and included in the analysis.
 
 The newly created dietary indices from Essi are saved under
-NAFLD_dietary_indices_data_Marilyn. And note in the
-lm: "you should also correct your models for total energy intake (just have it
-as covariate in the model, nanu006a)". This was added in the section of dietary
-lms.
+NAFLD_dietary_indices_data_Marilyn. And note for linear modeling: "you should
+also correct your models for total energy intake (just have it as covariate in
+the model, nanu006a)". This was added in the section of dietary lms.
 
 ```{r NAFLD-indices}
 #' load the NAFLD_dietary_indices_data
@@ -246,7 +244,12 @@ Add the 4 macro nutrient categories from GA2LEN and add to the `ffq_items`.
 ```{r NAFLD_food_macros}
 library(nafldData)
 #' - nanu003 (protein)
-#' - nanu004 (total fat) nanu005 (total carbs), nanu019b (saturated fatty acids), nanu023b (monounsaturated fatty acids), nanu025b (polyunsaturated fatty acids), nanu028b (trans fatty acids)
+#' - nanu004 (total fat)
+#' - nanu005 (total carbs),
+#' - nanu019b (saturated fatty acids)
+#' - nanu023b (monounsaturated fatty acids)
+#' - nanu025b (polyunsaturated fatty acids)
+#' - nanu028b (trans fatty acids)
 
 ffq <- nafldData("FFQ")
 rownames(ffq) <- ffq$AID
@@ -262,7 +265,6 @@ galan$trans_fatty_acids <- ffq[rownames(galan), "nanu028b"]
 #' variables
 ffq_items <- colnames(galan)[2:ncol(galan)] #excl AID col
 ```
-
 
 ## Metadata (excel)
 
@@ -286,8 +288,7 @@ print('nr of samples per sld types:')
 table(masld_phenotype_df$sld_type)
 ```
 
-
-# Merge all data sets
+## Merge all data sets
 
 Merging all data tables. Note that we restrict the data to participants for
 which we have proteomics **and** metabolomics data. This also ensures that any
@@ -335,8 +336,7 @@ write.table(gal_met_prot_data, file = handle, sep = "\t",
 
 All data sets are subset to `r length(AIDs)` study participants.
 
-
-# Clean data and restrict to relevant participants
+## Clean data and restrict to relevant participants
 
 The data is further processed and cleaned to remove unreliable
 measurements. Subsequently the data is restricted to relevant participants. We
@@ -449,7 +449,6 @@ would correspond to 10 years difference and it would be easier to define
 meaningful cut-off. Finally, we add a visc_subcut_fat variable on the dataset,
 comprising the ratio of visceral to subcutaneous fat thickness.
 
-
 ```{r define-age10-variable, message = FALSE}
 #' Convert categorical variables to factors
 col_cat <- c("case", "self_DM", "med_DM", "fasting", "no_drinking",
@@ -463,6 +462,16 @@ gal_met_prot_data$visc_subcut_fat <- gal_met_prot_data$visc_fat /
     gal_met_prot_data$body_fat
 ```
 
+Add additional variables.
+
+```{r}
+lab <- nafldData("Labdata")
+rownames(lab) <- lab$AID
+lab <- lab[gal_met_prot_data$AID, ]
+
+#' LDL
+gal_met_prot_data$LDL <- lab$nalp18
+```
 
 ## Summary of the final data set
 
@@ -476,67 +485,127 @@ The variables that are not allowed to conatin NAs are: sex, age and liver_fat.
 Participants with NA in BMI, and those 2 with extreme liver stiffness/FIB4
 scores are not removed.
 
+# Demographics
+
+We create next an overview table (Table 1 demographics) for the data set.
+
+```{r, results = "asis"}
+tmp <- split(gal_met_prot_data, gal_met_prot_data$liver_fat_cat)
+
+tab <- lapply(tmp, function(z) {
+    data.frame(n = nrow(z),
+               Age = mean(z$Age),
+               Age_sd = sd(z$Age),
+               Women = sum(z$Sex == "Female") / nrow(z) * 100,
+               Men = sum(z$Sex == "Male") / nrow(z) * 100,
+               BMI = mean(z$BMI, na.rm = TRUE),
+               BMI_sd = sd(z$BMI, na.rm = TRUE),
+               visc_fat = mean(z$visc_fat, na.rm = TRUE),
+               visc_fat_sd = sd(z$visc_fat, na.rm = TRUE),
+               body_fat = mean(z$body_fat, na.rm = TRUE),
+               body_fat_sd = sd(z$body_fat, na.rm = TRUE),
+               waist_circ = mean(z$waist_circumference, na.rm = TRUE),
+               waist_circ_sd = sd(z$waist_circumference, na.rm = TRUE),
+               Glucose = mean(z$glucose, na.rm = TRUE),
+               Glucose_sd = sd(z$glucose, na.rm = TRUE),
+               HbA1c = mean(z$HbA1c, na.rm = TRUE),
+               HbA1c_sd = sd(z$HbA1c, na.rm = TRUE),
+               T2D = sum(z$T2D == "TRUE") / nrow(z) * 100,
+               T2D_med = sum(z$med_DM == "Yes" , na.rm = TRUE) / nrow(z) * 100,
+               Triglycerides = mean(z$triglycerides, na.rm = TRUE),
+               Triglycerides_sd = sd(z$triglycerides, na.rm = TRUE),
+               HDL = mean(z$HDL, na.rm = TRUE),
+               HDL_sd = sd(z$HDL, na.rm = TRUE),
+               LDL = mean(z$LDL, na.rm = TRUE),
+               LDL_sd = sd(z$LDL, na.rm = TRUE),
+               lip_med = sum(z$med_lip == "Yes", na.rm = TRUE) / nrow(z) * 100,
+               MASLD = sum(z$MASLD == "TRUE", na.rm = TRUE) / nrow(z) * 100,
+               daily_alcohol = mean(z$daily_total_alcohol, na.rm = TRUE),
+               daily_alcohol_sd = sd(z$daily_total_alcohol, na.rm = TRUE),
+               liver_fat = mean(z$liver_fat, na.rm = TRUE),
+               liver_fat_sd = sd(z$liver_fat, na.rm = TRUE),
+               liver_stiffness = mean(z$liver_stiffness, na.rm = TRUE),
+               liver_stiffness_sd = sd(z$liver_stiffness, na.rm = TRUE),
+               FIB4 = mean(z$FIB4, na.rm = TRUE),
+               FIB4_sd = sd(z$FIB4, na.rm = TRUE)
+               )
+}) |>
+    do.call(what = rbind) |>
+    t()
+
+pandoc.table(tab, style = "rmarkdown", split.tables = Inf, digits = 3)
+```
 
 # Exploring steatosis
 
 We first evaluate relationships between steatosis and other
-parameters. Relationship to anthropometric variables.
-
-Age, sex and BMI.
+parameters, first for anthropometric variables age, sex and BMI.
 
 ```{r, fig.width = 8, fig.height = 8}
-par(mfrow = c(2, 3))
-vioplot(split(gal_met_prot_data$Age,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "Age", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "A", line = 1.5, cex = 2, adj = -0.3)
-grid()
-l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$Sex)
-m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
-barplot(m, ylab = "%", col = paste0(col_liver_fat_cat, "ce"))
-mtext(side = 3, text = "B", line = 1.5, cex = 2, adj = -0.3)
-vioplot(split(gal_met_prot_data$BMI,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "BMI", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "C", line = 1.5, cex = 2, adj = -0.3)
-grid()
+col_liver_fat_cat <- brewer.pal(7, "Set1")[c(7, 1, 5, 6)]
 
-l <- lm(Age ~ liver_fat_cat, data = gal_met_prot_data)
-summary(l)
+supp_figure_1 <- function() {
+    par(mfrow = c(2, 3))
+    vioplot(split(gal_met_prot_data$Age,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"))
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "Age", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "A", line = 1.5, cex = 2, adj = -0.3)
+    grid(nx = NA, ny = NULL)
+    l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$Sex)
+    m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
+    barplot(m, ylab = "%", col = paste0(col_liver_fat_cat, "ce"))
+    mtext(side = 3, text = "B", line = 1.5, cex = 2, adj = -0.3)
+    vioplot(split(gal_met_prot_data$BMI,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"))
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "BMI", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "C", line = 1.5, cex = 2, adj = -0.3)
+    grid(nx = NA, ny = NULL)
 
-l <- lm(BMI ~ liver_fat_cat, data = gal_met_prot_data)
-summary(l)
-l <- lm(BMI ~ liver_fat_cat + Sex + Age_10, data = gal_met_prot_data)
-summary(l)
+    vioplot(split(gal_met_prot_data$body_fat,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"))
+    grid(nx = NA, ny = NULL)
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "% body fat", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "D", line = 1.5, cex = 2, adj = -0.3)
 
-vioplot(split(gal_met_prot_data$body_fat,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-grid()
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "% body fat", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "D", line = 1.5, cex = 2, adj = -0.3)
+    vioplot(split(gal_met_prot_data$visc_fat,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"))
+    grid(nx = NA, ny = NULL)
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "% visceral fat", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "E", line = 1.5, cex = 2, adj = -0.3)
 
-vioplot(split(gal_met_prot_data$visc_fat,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-grid()
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "% visceral fat", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "E", line = 1.5, cex = 2, adj = -0.3)
+    vioplot(split(gal_met_prot_data$waist_circumference,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"))
+    grid(nx = NA, ny = NULL)
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "waist circumference", line = 2.5,
+          cex = par("cex.axis"))
+    mtext(side = 3, text = "F", line = 1.5, cex = 2, adj = -0.3)
+}
 
-vioplot(split(gal_met_prot_data$waist_circumference,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-grid()
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "waist circumference", line = 2.5,
-      par = par("cex.axis"))
-mtext(side = 3, text = "F", line = 1.5, cex = 2, adj = -0.3)
+## l <- lm(Age ~ liver_fat_cat, data = gal_met_prot_data)
+## summary(l)
+
+## l <- lm(BMI ~ liver_fat_cat, data = gal_met_prot_data)
+## summary(l)
+## l <- lm(BMI ~ liver_fat_cat + Sex + Age_10, data = gal_met_prot_data)
+## summary(l)
+
+
+supp_figure_1()
+
+png(file.path(IMAGE_PATH, "Supp_Figure_1.png"), width = 10, height = 8,
+    units = "cm", res = 600, pointsize = 6)
+supp_figure_1()
+dev.off()
 
 ```
 
@@ -548,7 +617,7 @@ Conclusion: will not adjust for BMI, but will consider Sex and age.
 
 Other fat-related measurements: body fat, visceral fat and waist circumference.
 
-```{r, fig.width = 8, fig.height = 4}
+```{r}
 l <- lm(body_fat ~ Age_10 + Sex + liver_fat_cat, data = gal_met_prot_data)
 summary(l)
 
@@ -570,37 +639,62 @@ summary(l)
 FIB4, liver stiffness, T2D and MASLD.
 
 ```{r, fig.width = 10, fig.height = 4}
-par(mfrow = c(1, 4))
-vioplot(split(gal_met_prot_data$FIB4,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-grid()
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "FIB4", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "A", line = 1.5, cex = 2, adj = -0.3)
-l <- lm(FIB4 ~ liver_fat_cat, data = gal_met_prot_data)
-summary(l)
 
-vioplot(split(gal_met_prot_data$liver_stiffness,
-              gal_met_prot_data$liver_fat_cat),
-        col = paste0(col_liver_fat_cat, "ce"))
-grid()
-mtext(side = 1, text = "steatosis grade", line = 3, par = par("cex.axis"))
-mtext(side = 2, text = "liver stiffness", line = 2.5, par = par("cex.axis"))
-mtext(side = 3, text = "B", line = 1.5, cex = 2, adj = -0.3)
+figure_1 <- function() {
+    par(mfrow = c(1, 4), mar = c(4.8, 4.1, 4.1, 1))
+    vioplot(split(gal_met_prot_data$FIB4,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"), xaxt = "n")
+    grid(nx = NA, ny = NULL)
+    axis(side = 1, at = 1:4, labels = c(0, 1, 2, 3))
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "FIB4", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "A", line = 1.5, cex = 2, adj = -0.4)
+
+    vioplot(split(gal_met_prot_data$liver_stiffness,
+                  gal_met_prot_data$liver_fat_cat),
+            col = paste0(col_liver_fat_cat, "ce"), xaxt = "n")
+    grid(nx = NA, ny = NULL)
+    axis(side = 1, at = 1:4, labels = c(0, 1, 2, 3))
+    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 2, text = "liver stiffness", line = 2.5, cex = par("cex.axis"))
+    mtext(side = 3, text = "B", line = 1.5, cex = 2, adj = -0.4)
+
+    l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$T2D)
+    m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
+    b <- barplot(m, ylab = "", col = paste0(col_liver_fat_cat, "ce"),
+                 main = "T2D", xaxt = "n")
+    mtext(side = 2, line = 2.5, "%", cex = par("cex.axis"))
+    mtext(side = 1, line = 2, at = b, c("No", "Yes"), cex = par("cex.axis"))
+    mtext(side = 3, text = "C", line = 1.5, cex = 2, adj = -0.4)
+
+    l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$MASLD)
+    m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
+    b <- barplot(m, ylab = "", col = paste0(col_liver_fat_cat, "ce"),
+                 main = "MASLD", xaxt = "n")
+    mtext(side = 2, line = 2.5, "%", cex = par("cex.axis"))
+    mtext(side = 1, line = 2, at = b, c("No", "Yes"), cex = par("cex.axis"))
+    mtext(side = 3, text = "D", line = 1.5, cex = 2, adj = -0.4)
+}
+
+figure_1()
+
+png(file.path(IMAGE_PATH, "Figure_1.png"), width = 10, height = 5,
+    units = "cm", res = 600, pointsize = 6)
+figure_1()
+dev.off()
+
+```
+
+Results from the linear models:
+
+```{r}
 l <- lm(liver_stiffness ~ liver_fat_cat, data = gal_met_prot_data)
 summary(l)
 
-l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$T2D)
-m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
-barplot(m, ylab = "%", col = paste0(col_liver_fat_cat, "ce"), main = "T2D")
-mtext(side = 3, text = "C", line = 1.5, cex = 2, adj = -0.3)
-
-l <- split(gal_met_prot_data$liver_fat_cat, gal_met_prot_data$MASLD)
-m <- do.call(cbind, lapply(l, function(z) as.numeric(table(z)) * 100 / length(z)))
-barplot(m, ylab = "%", col = paste0(col_liver_fat_cat, "ce"), main = "MASLD")
-mtext(side = 3, text = "D", line = 1.5, cex = 2, adj = -0.3)
-
+l <- lm(liver_stiffness ~ liver_fat_cat + Age_10 + Sex,
+        data = gal_met_prot_data)
+summary(l)
 ```
 
 - No association between steatosis grade and FIB4; note that is a strong
@@ -634,28 +728,48 @@ barplot(m, ylab = "%", col = paste0(col_liver_fat_cat, "ce"), main = "med lip")
 ## PCA of omics data
 
 ```{r, fig.width = 8, fig.height = 8}
-tmp <- gal_met_prot_data[, proteins]
+cols <- col_liver_fat_cat[as.integer(gal_met_prot_data$liver_fat_cat)]
 
-pc_all <- prcomp(scale(tmp, center = TRUE, scale = TRUE))
-library(CompMetaboTools)
-par(mfrow = c(2, 2), mar = c(4, 4.5, 3, 0.5))
-plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"))
-mtext(side = 3, text = "A", line = 1, cex = 2, adj = -0.1)
-plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"), pc_x = 3, pc_y = 4)
-mtext(side = 3, text = "B", line = 1, cex = 2, adj = -0.1)
+figure_2 <- function(cols = "#000000") {
+    tmp <- gal_met_prot_data[, proteins]
 
-tmp <- gal_met_prot_data[, metabolites] |>
-    as.matrix() |>
-    t() |>
-    na.omit() |>
-    t()
+    pc_all <- prcomp(scale(tmp, center = TRUE, scale = TRUE))
+    library(CompMetaboTools)
+    par(mfrow = c(2, 2), mar = c(4.5, 4.5, 3, 1.5), cex.lab = 1.3)
+    plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"))
+    mtext(side = 3, text = "A", line = 1, cex = 2, adj = -0.2)
+    plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"),
+             pc_x = 3, pc_y = 4)
+    mtext(side = 3, text = "B", line = 1, cex = 2, adj = -0.2)
 
-pc_all <- prcomp(scale(tmp, center = TRUE, scale = TRUE))
-plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"))
-mtext(side = 3, text = "C", line = 1, cex = 2, adj = -0.1)
-plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"),
-         pc_x = 3, pc_y = 4)
-mtext(side = 3, text = "D", line = 1, cex = 2, adj = -0.1)
+    tmp <- gal_met_prot_data[, metabolites] |>
+        as.matrix() |>
+        t() |>
+        na.omit() |>
+        t()
+
+    pc_all <- prcomp(scale(tmp, center = TRUE, scale = TRUE))
+    plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"))
+    mtext(side = 3, text = "C", line = 1, cex = 2, adj = -0.2)
+    plot_pca(pc_all, pch = 21, col = "#000000ce", bg = paste0(cols, "ce"),
+             pc_x = 3, pc_y = 4)
+    mtext(side = 3, text = "D", line = 1, cex = 2, adj = -0.2)
+}
+
+figure_2(cols)
+
+png(file.path(IMAGE_PATH, "Figure_2.png"), width = 10, height = 10,
+    units = "cm", res = 600, pointsize = 6)
+figure_2(cols)
+dev.off()
+
+```
+
+```{r}
+col_sex <- brewer.pal(3, "Set1")[1:2]
+cols <- col_sex[as.integer(gal_met_prot_data$Sex)]
+
+figure_2(cols)
 
 ```
 
@@ -2232,8 +2346,8 @@ Proteins:
 ```{r}
 #' Response to elevated platelet cytosolic Ca2+
 gal_met_prot_data$liver_fat_cat2 <- gal_met_prot_data$liver_fat_cat
-## gal_met_prot_data$liver_fat_cat2[gal_met_prot_data$liver_fat_cat2 %in% c(2, 3)] <- NA
-## gal_met_prot_data$liver_fat_cat2 <- droplevels(gal_met_prot_data$liver_fat_cat2)
+gal_met_prot_data$liver_fat_cat2[gal_met_prot_data$liver_fat_cat2 %in% c(2, 3)] <- NA
+gal_met_prot_data$liver_fat_cat2 <- droplevels(gal_met_prot_data$liver_fat_cat2)
 
 plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$P01011, main = 'SERPINA3')
 plot(x = as.factor(gal_met_prot_data$liver_fat_cat2), y = gal_met_prot_data$Q14624, main = 'ITIH4')
