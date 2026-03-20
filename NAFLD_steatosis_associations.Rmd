@@ -1994,7 +1994,7 @@ supp_figure_10 <- function() {
     plot(results_prot$effectSize_liver_fat_cat4,
          lm_output$effectSize_liver_fat_cat4,
          xlim = lim, ylim = lim, xlab = expression(ES),
-         ylab = expression(ES[+T2D]), main = "Grade 3",
+         ylab = expression(ES[+PDI]), main = "Grade 3",
          pch = 21, col = "#00000060", bg = "#00000020")
     grid()
     l <- lm(lm_output$effectSize_liver_fat_cat4 ~
@@ -2054,7 +2054,7 @@ supp_figure_11 <- function() {
     plot(results_met$effectSize_liver_fat_cat2,
          lm_output$effectSize_liver_fat_cat2,
          xlim = lim, ylim = lim, xlab = expression(ES),
-         ylab = expression(ES[+T2D]), main = "Grade 1",
+         ylab = expression(ES[+PDI]), main = "Grade 1",
          pch = 21, col = "#00000060", bg = "#00000020")
     grid()
     l <- lm(lm_output$effectSize_liver_fat_cat2 ~
@@ -2065,7 +2065,7 @@ supp_figure_11 <- function() {
     plot(results_met$effectSize_liver_fat_cat3,
          lm_output$effectSize_liver_fat_cat3,
          xlim = lim, ylim = lim, xlab = expression(ES),
-         ylab = expression(ES[+T2D]), main = "Grade 2",
+         ylab = expression(ES[+PDI]), main = "Grade 2",
          pch = 21, col = "#00000060", bg = "#00000020")
     grid()
     l <- lm(lm_output$effectSize_liver_fat_cat3 ~
@@ -2076,7 +2076,7 @@ supp_figure_11 <- function() {
     plot(results_met$effectSize_liver_fat_cat4,
          lm_output$effectSize_liver_fat_cat4,
          xlim = lim, ylim = lim, xlab = expression(ES),
-         ylab = expression(ES[+T2D]), main = "Grade 3",
+         ylab = expression(ES[+PDI]), main = "Grade 3",
          pch = 21, col = "#00000060", bg = "#00000020")
     grid()
     l <- lm(lm_output$effectSize_liver_fat_cat4 ~
