@@ -517,6 +517,15 @@ tab <- lapply(tmp, function(z) {
 pandoc.table(tab, style = "rmarkdown", split.tables = Inf, digits = 3)
 ```
 
+```{r}
+#' p-values for quantitative differences
+summary(lm(BMI ~ liver_fat_cat, data = gal_met_prot_data))
+summary(lm(visc_fat ~ liver_fat_cat, data = gal_met_prot_data))
+summary(lm(body_fat ~ liver_fat_cat, data = gal_met_prot_data))
+summary(lm(waist_circumference ~ liver_fat_cat, data = gal_met_prot_data))
+
+```
+
 # Exploring steatosis
 
 We first evaluate relationships between steatosis and other
@@ -628,7 +637,7 @@ figure_1 <- function() {
             col = paste0(col_liver_fat_cat, "ce"), xaxt = "n")
     grid(nx = NA, ny = NULL)
     axis(side = 1, at = 1:4, labels = c(0, 1, 2, 3))
-    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 1, text = "Steatosis grade", line = 3, cex = par("cex.axis"))
     mtext(side = 2, text = "FIB4", line = 2.5, cex = par("cex.axis"))
     mtext(side = 3, text = "A", line = 1.5, cex = 2, adj = -0.4)
 
@@ -637,7 +646,7 @@ figure_1 <- function() {
             col = paste0(col_liver_fat_cat, "ce"), xaxt = "n")
     grid(nx = NA, ny = NULL)
     axis(side = 1, at = 1:4, labels = c(0, 1, 2, 3))
-    mtext(side = 1, text = "steatosis grade", line = 3, cex = par("cex.axis"))
+    mtext(side = 1, text = "Steatosis grade", line = 3, cex = par("cex.axis"))
     mtext(side = 2, text = "liver stiffness", line = 2.5, cex = par("cex.axis"))
     mtext(side = 3, text = "B", line = 1.5, cex = 2, adj = -0.4)
 
