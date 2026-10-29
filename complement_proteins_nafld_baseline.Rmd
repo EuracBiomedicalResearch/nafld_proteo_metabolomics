@@ -1,0 +1,558 @@
+---
+title: "Evaluation of complement system proteins across time points"
+author: "Johannes Rainer"
+graphics: yes
+output:
+  BiocStyle::html_document:
+    toc_float: true
+    code_folding: hide
+---
+
+```{r, echo = FALSE}
+library(knitr)
+opts_chunk$set(message = FALSE, error = FALSE, warning = FALSE,
+               cache = FALSE, fig.width = 10, fig.height = 7)
+DATA_PATH <- "."
+```
+
+# Introduction
+
+Some proteins from the complement system are significantly associated with liver
+steatosis. We have also complement system activity information in CHRIS, but
+only for the baseline collection not the NAFLD time point. Here we evaluate and
+compare the abundance of complement system proteins measured by mass
+spectrometry in CHRIS baseline and NAFLD time points. Correlation of abundances
+between baseline and NAFLD time point could help justifying the use of
+complement system activity information from CHRIS baseline.
+
+# Complement system proteins
+
+The list of proteins part of the complement pathway
+[KW-0180](https://www.uniprot.org/keywords/KW-0180) was retrieved from Uniprot
+on 2026-10-12. It consists of only (human) reviewed entries.
+
+We first load the CHRIS ScanningSWATH proteomics data.
+
+```{r}
+library(tidyfr)
+
+md1 <- data_module(name = "chris_scanningswath_proteins", version = "1.0.0.3",
+                   path = DATA_PATH)
+prot_data <- data(md1)
+prot_ann <- labels(md1)
+stopifnot(all(colnames(prot_data) == rownames(prot_ann)))
+colnames(prot_data) <- prot_ann$description
+rownames(prot_ann) <- prot_ann$description
+
+#' define the columns with protein concentrations
+proteins <- rownames(prot_ann)[prot_ann$type != "categorical"]
+proteins <- rownames(prot_ann)[prot_ann$Genes != ""]
+
+#' select proteins dataframe
+prot_data <- prot_data[, proteins]
+```
+
+Next we load the UniProt complement system protein information and restrict to
+human proteins.
+
+```{r}
+cp <- read.table("data/uniprotkb_keyword_KW_0180_AND_reviewed_2026_10_12.tsv",
+                 header = TRUE, sep = "\t", quote = "")
+cp <- cp[cp$Organism == "Homo sapiens (Human)", ]
+cp <- cp[order(cp$Gene.Names), ]
+rownames(cp) <- NULL
+```
+
+The table below lists all complement system proteins defined by Uniprot.
+
+```{r, results = "asis"}
+library(pander)
+pandoc.table(cp[, c("Entry", "Gene.Names")], style = "rmarkdown",
+             caption = "Complement system proteins (UniProt).")
+```
+
+Next we identify proteins in the ScanningSWATH data set matching the complement
+system proteins defined by UniProt. We first match directly using the UniProt
+IDs and, for those without a direct match, we evaluate also the UniProt name and
+gene names. Note that the latter two did not improve the mapping already
+achieved through the UniProt ID.
+
+```{r}
+cp$mapped_row <- rep(NA_character_, nrow(cp))
+for (i in seq_len(nrow(cp))) {
+    ## UniProt ID
+    yey <- grep(paste0("(^|;)", cp$Entry[i], "(;|$)"), rownames(prot_ann))
+    if (length(yey)) {
+        cp$mapped_row[i] <- rownames(prot_ann)[yey]
+    } else {
+        ## UniProt name
+        yey <- which(prot_ann$Protein.Names == cp$Entry.Name[i])
+        if (length(yey)) {
+            cp$mapped_row[i] <- rownames(prot_ann)[yey]
+        } else {
+            ## Gene name(s)
+            gns <- sub(";", "", unlist(strsplit(cp$Gene.Names[i],
+                                                split = " ", fixed = TRUE)))
+            yey <- which(prot_ann$Genes %in% gns)
+            if (length(yey))
+                cp$mapped_row[i] <- rownames(prot_ann)[yey]
+        }
+    }
+}
+rownames(cp) <- NULL
+```
+
+The complement system proteins measured in the CHRIS ScanningSWATH data set are
+listed in the table below.
+
+```{r, results = "asis"}
+cp[!is.na(cp$mapped_row), c("Entry", "mapped_row", "Gene.Names..primary.")] |>
+    pandoc.table(style = "rmarkdown", caption = "Measured complement proteins.")
+```
+
+While the following can not be detected:
+`r paste(cp$Gene.Names..primary.[is.na(cp$mapped_row)], collapse = ", ")`
+
+```{r}
+cp <- cp[!is.na(cp$mapped_row), ]
+```
+
+## Retrieve metadata form CHRIS and NAFLD
+
+We next load metadata from the NAFLD and CHRIS data sets, remove study drop-outs
+or individuals without ScanningSWATH proteomics data in either the CHRIS
+baseline or NAFLD time point and determine the average time between baseline and
+NAFLD sample collection.
+
+```{r, message = FALSE}
+library(chrisUtils)
+library(nafldData)
+library(chrisData)
+
+nd <- nafldData("Personal")
+cd <- chrisData("general")
+
+nd <- nd[, c("AID", "aid_chris", "na_examd", "na_age", "na_sex")]
+nd$x0_examd <- cd[match(nd$aid_chris, cd$AID), "x0_examd"]
+nd$exam_diff <- nd$na_examd - nd$x0_examd
+nd$year_diff <- as.numeric(nd$exam_diff, units = "days") / 365
+
+#' Restrict to participants with proteomics data in both time points
+nd <- nd[nd$aid_chris %in% rownames(prot_data), ]
+nd <- nd[nd$AID %in% rownames(prot_data), ]
+
+quantile(nd$year_diff)
+```
+
+Note: from the 327 NAFLD participants we reduce to `r nrow(nd)` that have
+proteomics data for both the baseline **and** NAFLD time point.
+
+### Change in phenotype data between baseline and NAFLD
+
+We next load also the (clinical) phenotype data for the participants (defined in
+*nafld_data_overview.Rmd*).
+
+```{r, message = FALSE}
+library(readxl)
+mp <- read_excel(file.path("data", "masld_phenotypes.xlsx")) |>
+    as.data.frame()
+rownames(mp) <- mp$AID
+colnames(mp) <- paste0("na_", colnames(mp))
+
+nd <- data.frame(
+    nd,
+    mp[nd$AID, c("na_case", "na_BMI", "na_body_fat", "na_visc_fat",
+                 "na_HbA1c", "na_liver_stiffness", "na_liver_fat",
+                 "na_visual_fat", "na_T2D", "na_waist_circumference",
+                 "na_triglycerides", "na_sld_type", "na_MetS", "na_med_DM",
+                 "na_med_BP", "na_med_lip", "na_med_MS")],
+    check.names = FALSE)
+nd$na_sld_type <- factor(nd$na_sld_type, levels = c("none", "MASLD",
+                                                    "MetALD", "SLD"))
+
+#' Add respecive information (if available) also from CHRIS baseline.
+#' BMI, fat
+tmp <- chrisData("clinical")
+rownames(tmp) <- tmp$AID
+nd$x0_BMI <- tmp[nd$aid_chris, "x0an03a"]
+nd$x0_BMI <- as.numeric(sub(">", "", nd$x0_BMI))
+nd$x0_body_fat <- tmp[nd$aid_chris, "x0an04"]
+nd$x0_body_fat <- as.numeric(sub(">", "", nd$x0_body_fat))
+nd$x0_visc_fat <- tmp[nd$aid_chris, "x0an05"]
+
+#' triglycerides, glucose, HbA1c
+tmp <- chrisData("Labdata")
+rownames(tmp) <- tmp$AID
+nd$x0_HbA1c <- tmp[nd$aid_chris, "x0lp06a"]
+nd$x0_triglycerides <- tmp[nd$aid_chris, "x0lp19"]
+
+#' medication summary from baseline
+tmp <- chrisData("drugs_summary")
+rownames(tmp) <- tmp$AID
+nd$x0_med_DM <- tmp[nd$aid_chris, "x0dd21"]
+nd$x0_med_BP <- tmp[nd$aid_chris, "x0dd20"]
+nd$x0_med_lip <- tmp[nd$aid_chris, "x0dd22"]
+nd$x0_med_MS <- tmp[nd$aid_chris, "x0dd23"]
+
+#' calulating differences
+nd$diff_BMI <- nd$na_BMI - nd$x0_BMI
+nd$diff_body_fat <- nd$na_body_fat - nd$x0_body_fat
+nd$diff_visc_fat <- nd$na_visc_fat - nd$x0_visc_fat
+nd$diff_HbA1c <- nd$na_HbA1c - nd$x0_HbA1c
+nd$diff_triglycerides <- nd$na_triglycerides - nd$x0_triglycerides
+```
+
+We visualize the changes in several key variables through a heatmap.
+
+```{r, fig.cap = "Heatmap grouping participants based on changes observed in variables between NAFLD and CHRIS baseline collection. Note: colors are capped at 5, the changes in the first 2 rows are between -8 and -10.", fig.height = 18, fig.width = 7}
+library(RColorBrewer)
+library(pheatmap)
+m <- as.matrix(nd[, c("diff_BMI", "diff_body_fat", "diff_visc_fat",
+                      "diff_HbA1c", "diff_triglycerides")])
+m <- scale(m, center = TRUE, scale = TRUE) # scale COLUMNS (traits)
+rownames(m) <- nd$AID
+ann <- nd[, c("na_sex", "na_med_DM", "na_med_lip", "year_diff", "na_age")]
+rownames(ann) <- nd$AID
+
+#' Note:
+#' no relationship with na_sld_type
+
+#' Symmetric color palette
+col_pal <- colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(100)
+brks <- seq(-5, 5, length.out = 101)
+
+pheatmap(m, annotation_row = ann, color = col_pal, breaks = brks)
+```
+
+There are some groups or participants with an increase in body fat or HbA1c
+measurements. This seems to be unrelated to the participant's age, sex or
+difference between baseline and NAFLD collection time point. Individuals with
+T2D medication (at NAFLD time point!) seem however enriched among those with the
+largest changes. Also, single individuals seem to have drastic differences for
+single variables (in particular the first two rows). We might eventually
+identify and flag/remove these participants from some of the following analyses.
+
+We also identify participants for which medication changed between baseline and
+NAFLD time point (ignoring missing values, i.e., considering **only changes from
+Yes -> No and No -> Yes**).
+
+```{r}
+med_change <- nd$x0_med_DM == "Yes" & nd$na_med_DM == "No" |
+    nd$x0_med_DM == "No" & nd$na_med_DM == "Yes" |
+    nd$x0_med_BP == "Yes" & nd$na_med_BP == "No" |
+    nd$x0_med_BP == "No" & nd$na_med_BP == "Yes" |
+    nd$x0_med_lip == "Yes" & nd$na_med_lip == "No" |
+    nd$x0_med_lip == "No" & nd$na_med_lip == "Yes" |
+    nd$x0_med_MS == "Yes" & nd$na_med_MS == "No" |
+    nd$x0_med_MS == "No" & nd$na_med_MS == "Yes"
+med_change <- which(med_change)
+```
+
+```{r, results = "asis"}
+## Note: no change in med_MS
+tmp <- nd[med_change, c("na_age", "year_diff", "x0_med_DM", "na_med_DM",
+                        "x0_med_BP", "na_med_BP", "x0_med_lip", "na_med_lip",
+                        "diff_BMI", "diff_body_fat",
+                        "diff_HbA1c", "diff_triglycerides")]
+tmp$med_DM <- tmp$na_med_DM
+tmp$med_DM[tmp$x0_med_DM == tmp$na_med_DM] <- ""
+tmp$med_lip <- tmp$na_med_lip
+tmp$med_lip[tmp$x0_med_lip == tmp$na_med_lip] <- ""
+tmp$med_BP <- tmp$na_med_BP
+tmp$med_BP[tmp$x0_med_BP == tmp$na_med_BP] <- ""
+pandoc.table(tmp[, c("na_age", "year_diff", "diff_BMI", "diff_body_fat",
+                     "diff_HbA1c", "diff_triglycerides", "med_DM", "med_BP",
+                     "med_lip")], style = "rmarkdown", split.table = Inf,
+             caption = paste0("Individuals with a change in reported ",
+                              "medication. Yes means a change from No to Yes,",
+                              " No from Yes to No (baseline to NAFLD)."))
+```
+
+We repeat the heatmap with trait changes including the information whether
+participants changed medication.
+
+```{r, fig.cap = "Heatmap grouping participants based on changes observed in variables between NAFLD and CHRIS baseline collection. Note: colors are capped at 5, the changes in the first 2 rows are between -8 and -10. Row annotations indicate changes in medication.", fig.height = 18, fig.width = 7}
+ann_med <- data.frame(BP = rep(NA_character_, nrow(nd)),
+                      DM = rep(NA_character_, nrow(nd)),
+                      LL = rep(NA_character_, nrow(nd)))
+ann_med$DM[which(nd$x0_med_DM == "No" & nd$na_med_DM == "Yes")] <- "Yes"
+ann_med$DM[which(nd$x0_med_DM == "Yes" & nd$na_med_DM == "No")] <- "No"
+ann_med$BP[which(nd$x0_med_BP == "No" & nd$na_med_BP == "Yes")] <- "Yes"
+ann_med$BP[which(nd$x0_med_BP == "Yes" & nd$na_med_BP == "No")] <- "No"
+ann_med$LL[which(nd$x0_med_lip == "No" & nd$na_med_lip == "Yes")] <- "Yes"
+ann_med$LL[which(nd$x0_med_lip == "Yes" & nd$na_med_lip == "No")] <- "No"
+rownames(ann_med) <- nd$AID
+
+pheatmap(m, annotation_row = ann_med, color = col_pal, breaks = brks)
+```
+
+The observed changes for some of the traits seem mostly unrelated to the
+(reported) change in medication.
+
+We also evaluate which trait could be used as a proxy for steatosis (*liver fat*
+variable).
+
+```{r}
+lf_proxy <- lapply(
+    c("na_body_fat", "na_visc_fat", "na_HbA1c", "na_triglycerides", "na_BMI"),
+    function(x) {
+        data.frame(x = x, y = "na_liver_fat",
+                   r = cor(nd[, x], nd[, "na_liver_fat"],
+                           use = "pairwise.complete.obs", "pearson"),
+                   rho = cor(nd[, x], nd[, "na_liver_fat"],
+                             use = "pairwise.complete.obs", "spearman"))
+    }) |> do.call(what = rbind)
+```
+
+```{r, results = "asis"}
+pandoc.table(
+    lf_proxy, style = "rmarkdown",
+    caption = "Correlation of various traits with steatosis in NAFLD.")
+```
+
+The *best* correlating variables are BMI and visceral fat. Note that this was
+calculated on only `r nrow(nd)` participants. Increasing to the full data set
+might change the values a bit. The correlations are however not large enough to
+justify using that variable as a proxy for steatosis in the baseline.
+
+### Evaluating complement system protein abundances in baseline and NAFLD
+
+We next subset the proteomics data sets to the complement system proteins and
+data for the selected participants.
+
+```{r}
+prot_baseline <- prot_data[nd$aid_chris, cp$mapped_row]
+prot_nafld <- prot_data[nd$AID, cp$mapped_row]
+```
+
+We first inspect the data using unsupervised methods such as PCA and HCL.
+
+```{r, fig.cap = "Heatmap of complement system protein abundances in CHRIS baseline and NAFLD time point.", fig.height = 20, fig.width = 7}
+prot_comb <- rbind(prot_baseline, prot_nafld)
+colnames(prot_comb) <- cp$Gene.Names
+
+ann_rows <- data.frame(T = rep("NAFLD", nrow(prot_comb)))
+ann_rows$T[seq_len(nrow(prot_baseline))] <- "baseline"
+rownames(ann_rows) <- rownames(prot_comb)
+
+pheatmap(scale(prot_comb), annotation_row = ann_rows)
+
+```
+
+The data does not separate by time points suggesting that there is no systematic
+difference in complement system proteins between CHRIS baseline and NAFLD time
+point.
+
+Evaluating protein abundances using a PCA.
+
+```{r, fig.width = 14, fig.height = 7}
+lbls <- c(seq_len(nrow(prot_baseline)), seq_len(nrow(prot_baseline)))
+
+pc_all <- prcomp(scale(prot_comb, center = TRUE, scale = TRUE))
+library(CompMetaboTools)
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1.5), cex.lab = 1.3)
+plot_pca(pc_all, pch = 21, col = "#000000ce", labels = lbls)
+plot_pca(pc_all, pch = 21, col = "#000000ce",
+         pc_x = 3, pc_y = 4, labels = lbls)
+```
+
+Not clear and easy to interpret. Some sample pairs baseline-NAFLD seem to group
+closely.
+
+Evaluating the average abundance across individuals between the two time points.
+
+```{r, fig.cap = "Comparison of the mean abundance of complement system proteins across participants for the two sampling time points."}
+library(vioplot)
+vioplot(data.frame(
+    baseline = colMeans(prot_baseline),
+    nafld = colMeans(prot_nafld)))
+grid()
+```
+
+The mean abundance of complement system proteins across the individuals in the
+two sampling time points are comparable, with a slight lower abundance in the
+NAFLD time point.
+
+The questions are:
+
+- Are the abundances of complement system proteins correlated between baseline
+  and NAFLD collection?
+- Are abundances systematically different for some proteins?
+- Are there individuals with constant and others with differences in complement
+  system protein abundances?
+
+### Correlation of complement protein abundances between baseline and NAFLD time point
+
+To address the first question we calculate the correlation of complement system
+proteins between time points and fit in addition per-protein linear models
+comparing the abundances.
+
+```{r}
+cp_corr <- lapply(colnames(prot_baseline), function(x) {
+    r <- cor(prot_nafld[, x], prot_baseline[, x])
+    l <- lm(y ~ x, data.frame(y = prot_nafld[, x], x = prot_baseline[, x]))
+    l <- summary(l)
+    data.frame(UniProt = x,
+               R = r,
+               coef = l$coefficients[2L, "Estimate"],
+               p.value = l$coefficients[2L, 4L])
+}) |> do.call(what = rbind)
+cp_corr$p.adj <- p.adjust(cp_corr$p.value, method = "bonferroni")
+cp_corr$Gene.Names <- cp$Gene.Names[match(cp_corr$UniProt, cp$mapped_row)]
+```
+
+Abundance correlations between baseline and NAFLD time point for complement
+system proteins are listed below (ordered by significance).
+
+```{r, results = "asis"}
+cp_corr[order(cp_corr$p.value),
+          c("UniProt", "Gene.Names", "R", "coef", "p.adj")] |>
+    pandoc.table(
+        style = "rmarkdown", row.names = FALSE, split.table = Inf,
+        caption = paste0("Correlation of complement system protein abundances ",
+                         "between NAFLD and CHRIS baseline sampling."))
+```
+
+There is correlation for some complement system protein abundances between NAFLD
+collection and CHRIS baseline. The slopes for the individual models are all
+smaller 1 suggesting on average slightly **lower** abundances in the NAFLD
+collection. Whether these correlations are strong enough to justify using
+baseline complement activation data is questionable.
+
+```{r, fig.cap = "Correlation of protein abundances between NAFLD and CHRIS baseline collection for two example complement system proteins.", fig.width = 14, figh.height = 7}
+col_sex <- ifelse(nd$na_sex == "Female", "#E41A1C", "#377EB8")
+plot_corr <- function(x, col, ...) {
+    d <- data.frame(y = prot_nafld[, x], x = prot_baseline[, x])
+    bg <- paste0(col, 80)
+    bg[is.na(col)] <- NA
+    plot(d$x, d$y, xlim = range(d), ylim = range(d),
+         main = paste0(x, ": ", cp$Gene.Names[match(x, cp$mapped_row)]),
+         xlab = expression(log[2]~abundance~baseline),
+         ylab = expression(log[2]~abundance~NAFLD), pch = 21,
+         col = col, bg = bg, ...)
+    grid()
+    abline(0, 1, lty = 3, col = "grey")
+    l <- lm(y ~ x, data = d)
+    abline(l)
+}
+
+
+par(mfrow = c(1, 2))
+plot_corr("P01024", col_sex)
+
+plot_corr("P06681", col_sex)
+
+#' check different traits
+## library(scales)
+## col_fun <- col_numeric(brewer.pal(7, "Set1")[6:7],
+##                        domain = range(nd$na_BMI, na.rm = TRUE))
+## plot_corr("P01024", col_fun(nd$na_BMI), cex = 2)
+## col_fun <- col_numeric(brewer.pal(7, "Set1")[6:7],
+##                        domain = range(nd$na_HbA1c, na.rm = TRUE))
+## plot_corr("P01024", col_fun(nd$na_HbA1c), cex = 2)
+## col_fun <- col_numeric(brewer.pal(7, "Set1")[6:7],
+##                        domain = range(nd$na_visc_fat, na.rm = TRUE))
+## plot_corr("P01024", col_fun(nd$na_visc_fat), cex = 2)
+## tmp <- nd$diff_visc_fat
+## col_fun <- col_numeric(brewer.pal(7, "Set1")[6:7],
+##                        domain = range(tmp, na.rm = TRUE))
+## plot_corr("P01024", col_fun(tmp), cex = 2)
+
+
+```
+
+For a subset of participants, the correlation for C3 protein abundances would
+even be higher. We could however not identify an obvious variable that could
+characterize those.
+
+### Pairwise correlation of complement protein abundances for the same individual
+
+We next calculate pairwise correlation of complement system protein abundances
+in baseline and NAFLD time point for each individual. We can evaluate a) whether
+correlation between samples of the same individual are on average higher than
+between random pairs and we can b) identify individuals with high and those with
+low correlations. The latter might be excluded from an analysis evaluating
+complement system activity in baseline.
+
+```{r}
+calc_cor <- function(x, y) {
+    res <- numeric(nrow(x))
+    for (i in seq_len(nrow(x)))
+        res[i] <- cor(as.numeric(x[i, ]), as.numeric(y[i, ]))
+    res
+}
+
+#' Calculate (pearson) correlation between pairs of samples of the same
+#' participant
+cor_self <- calc_cor(prot_baseline, prot_nafld)
+
+#' Calculate correlation for random pairs, 1000 times.
+set.seed(123)
+nr <- nrow(prot_nafld)
+cor_rand <- replicate(
+    1000, calc_cor(prot_baseline, prot_nafld[sample(seq_len(nr)), ]),
+    simplify = FALSE)
+cor_rand <- do.call(cbind, cor_rand)
+cor_rand_mean <- rowMeans(cor_rand)
+```
+
+The distribution of per-participant pairwise protein abundances between baseline
+and NAFLD time point are shown below in addition to the average correlation
+between 1000 random participation pairs.
+
+```{r, fig.cap = "Distribution of per-participant complement system protein correlations between baseline and NAFLD time point (blue) and average correlation between 1000 random pairs (black)."}
+plot(density(cor_self), xlab = "correlation", main = "", ylim = c(0, 11),
+     col = "#0000ff80", lwd = 2)
+points(density(cor_rand_mean), type = "l", col = "#00000080", lwd = 2)
+grid()
+```
+
+The correlation is significantly higher for paired samples. There is also an
+interesting bump in the distribution (partially present also in the background
+distribution). Testing whether this difference is significant using a Student's
+t-test:
+
+```{r}
+t.test(cor_self, cor_rand_mean)
+```
+
+The pairwise correlations seem to be unrelated to any of the main study
+covariates.
+
+```{r}
+cls <- c("year_diff", "na_BMI", "na_age", "na_body_fat", "na_visc_fat",
+         "na_HbA1c", "na_liver_stiffness", "na_waist_circumference",
+         "na_triglycerides", "diff_BMI", "diff_body_fat",
+         "diff_visc_fat", "diff_HbA1c", "diff_triglycerides")
+tmp <- lapply(cls, function(z) {
+    cor(x = cor_self, y = nd[[z]], use = "pairwise.complete.obs",
+        method = "spearman")
+})
+
+## *Best* correlations...
+plot(cor_self, nd$year_diff)
+```
+
+Still, maybe interesting to evaluate the worst correlations.
+
+```{r, results = "asis"}
+idx <- order(cor_self)
+nd$cs_cor <- cor_self
+
+tmp <- nd[idx, c("cs_cor", "na_age", "na_sex", "year_diff", "na_BMI",
+                 "na_T2D")][1:10, ]
+pandoc.table(
+    tmp, style = "rmarkdown",
+    caption = paste0("Top 10 participants with the lowest correlation of ",
+                     "complement system protein abundances between baseline ",
+                     "and NAFLD time point"))
+```
+
+We could exclude these participants from an analysis on the complement system
+activity ... eventually.
+
+# Session Information
+
+```{r}
+sessionInfo()
+```
